@@ -237,11 +237,12 @@ export class NagiosStreamer {
   /** Raise/clear the platform's self-monitoring alert (silent-blindness guard). */
   async #setStale(isStale, reason) {
     if (isStale === this.stale) return; // edge-triggered
-    this.stale = isStale;
     const tenantId = this.defaultTenantId
       ?? (await this.pg.query('SELECT id FROM tenants ORDER BY created_at LIMIT 1')).rows[0]?.id;
     if (!tenantId) return;
 
+    // Commit the flag only AFTER the DB write succeeds, so a transient failure
+    // is retried on the next tick instead of being swallowed.
     if (isStale) {
       this.log.error({ reason }, 'MONITORING ENGINE STALE');
       const { rows } = await this.pg.query(
@@ -265,6 +266,7 @@ export class NagiosStreamer {
       );
       if (rows[0]) await this.#publishAlert('resolved', rows[0]);
     }
+    this.stale = isStale;
   }
 
   async #publishAlert(action, alert) {

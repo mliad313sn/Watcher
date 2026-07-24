@@ -67,7 +67,7 @@ export class CorrelationEngine {
     await this.#raise(event, severity, isHost);
   }
 
-  async #raise(event, severity, isHost) {
+  async #raise(event, severity, isHost, retried = false) {
     const device = await this.#lookupDevice(event.host);
     const tenantId = device?.tenant_id ?? event.tenantId ?? (await this.#defaultTenant());
     const checkName = event.service ?? '';
@@ -133,15 +133,25 @@ export class CorrelationEngine {
         alert = rows[0];
         await this.#publish('raised', alert);
       } else {
-        const { rows } = await this.pg.query(
-          `INSERT INTO alerts (tenant_id, device_id, device_name, check_name,
-                               severity, status, message, flapping, suppressed_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-          [tenantId, device?.id ?? null, event.host, checkName,
-           severity, status, message, event.flapping ?? false, rootCause],
-        );
-        alert = rows[0];
-        await this.#publish('raised', alert);
+        try {
+          const { rows } = await this.pg.query(
+            `INSERT INTO alerts (tenant_id, device_id, device_name, check_name,
+                                 severity, status, message, flapping, suppressed_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [tenantId, device?.id ?? null, event.host, checkName,
+             severity, status, message, event.flapping ?? false, rootCause],
+          );
+          alert = rows[0];
+          await this.#publish('raised', alert);
+        } catch (err) {
+          // Race: a concurrent event opened the same (device, check) alert
+          // between our SELECT and INSERT and tripped the partial-unique
+          // index. Re-run once — the retry now takes the UPDATE branch.
+          if (err.code === '23505' && !retried) {
+            return this.#raise(event, severity, isHost, true);
+          }
+          throw err;
+        }
       }
     }
 

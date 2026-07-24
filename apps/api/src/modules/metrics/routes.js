@@ -16,6 +16,20 @@ const SOURCES = [
 ];
 
 export default async function metricsRoutes(fastify) {
+  // Metrics live in TimescaleDB (device_id only); ownership is defined in the
+  // Postgres inventory. Verify the device belongs to the caller's tenant before
+  // returning any series so metrics can't be read cross-tenant (issue #3).
+  async function deviceInTenant(deviceId, tenantId) {
+    const { rowCount } = await fastify.pg.query(
+      'SELECT 1 FROM devices WHERE id = $1 AND tenant_id = $2 LIMIT 1', [deviceId, tenantId]);
+    return rowCount > 0;
+  }
+  async function deviceNameInTenant(name, tenantId) {
+    const { rowCount } = await fastify.pg.query(
+      'SELECT 1 FROM devices WHERE name = $1 AND tenant_id = $2 LIMIT 1', [name, tenantId]);
+    return rowCount > 0;
+  }
+
   fastify.get('/query', {
     schema: {
       querystring: {
@@ -33,6 +47,9 @@ export default async function metricsRoutes(fastify) {
     preHandler: fastify.requireRole('viewer'),
   }, async (request, reply) => {
     const { deviceId, metric, instance } = request.query;
+    if (!(await deviceInTenant(deviceId, request.user.tenantId))) {
+      return reply.code(404).send({ error: 'device not found' });
+    }
     const to = request.query.to ? new Date(request.query.to) : new Date();
     const from = request.query.from ? new Date(request.query.from) : new Date(to.getTime() - 3600e3);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
@@ -72,7 +89,10 @@ export default async function metricsRoutes(fastify) {
       },
     },
     preHandler: fastify.requireRole('viewer'),
-  }, async (request) => {
+  }, async (request, reply) => {
+    if (!(await deviceInTenant(request.query.deviceId, request.user.tenantId))) {
+      return reply.code(404).send({ error: 'device not found' });
+    }
     const { rows } = await fastify.tsdb.query(
       `SELECT DISTINCT ON (instance) instance, time, value
        FROM metrics
@@ -97,8 +117,11 @@ export default async function metricsRoutes(fastify) {
       },
     },
     preHandler: fastify.requireRole('viewer'),
-  }, async (request) => {
+  }, async (request, reply) => {
     const { device, check = '', days } = request.query;
+    if (!(await deviceNameInTenant(device, request.user.tenantId))) {
+      return reply.code(404).send({ error: 'device not found' });
+    }
     const now = Date.now();
     const windowStart = now - days * 86400e3;
     const windowStartIso = new Date(windowStart).toISOString();

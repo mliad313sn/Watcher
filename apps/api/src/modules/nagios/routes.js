@@ -8,6 +8,14 @@ import { NagiosCommandWriter } from './external-command.js';
 export default async function nagiosRoutes(fastify, opts) {
   const commands = new NagiosCommandWriter(opts.nagios.commandFile);
 
+  // Operator actions target a host by name; ensure it belongs to the caller's
+  // tenant so one tenant can't ack/recheck/downtime another's hosts (issue #3).
+  async function hostInTenant(host, tenantId) {
+    const { rowCount } = await fastify.pg.query(
+      'SELECT 1 FROM devices WHERE name = $1 AND tenant_id = $2 LIMIT 1', [host, tenantId]);
+    return rowCount > 0;
+  }
+
   /** Full live state dump — grids and the status map read this once, then
    *  stay current via the WebSocket state stream. */
   fastify.get('/state', { preHandler: fastify.requireRole('viewer') }, async (request) => {
@@ -81,8 +89,11 @@ export default async function nagiosRoutes(fastify, opts) {
   };
 
   fastify.post('/ack', { schema: ackSchema, preHandler: fastify.requireRole('operator') },
-    async (request) => {
+    async (request, reply) => {
       const { host, service, comment } = request.body;
+      if (!(await hostInTenant(host, request.user.tenantId))) {
+        return reply.code(403).send({ error: 'host not in your tenant' });
+      }
       const user = request.user.username;
       const line = service
         ? await commands.acknowledgeService(host, service, user, comment)
@@ -99,8 +110,11 @@ export default async function nagiosRoutes(fastify, opts) {
       },
     },
     preHandler: fastify.requireRole('operator'),
-  }, async (request) => {
+  }, async (request, reply) => {
     const { host, service } = request.body;
+    if (!(await hostInTenant(host, request.user.tenantId))) {
+      return reply.code(403).send({ error: 'host not in your tenant' });
+    }
     const line = service
       ? await commands.recheckService(host, service)
       : await commands.recheckHost(host);
@@ -121,8 +135,11 @@ export default async function nagiosRoutes(fastify, opts) {
       },
     },
     preHandler: fastify.requireRole('operator'),
-  }, async (request) => {
+  }, async (request, reply) => {
     const { host, service, minutes, comment } = request.body;
+    if (!(await hostInTenant(host, request.user.tenantId))) {
+      return reply.code(403).send({ error: 'host not in your tenant' });
+    }
     const start = Math.floor(Date.now() / 1000);
     const end = start + minutes * 60;
     const user = request.user.username;
