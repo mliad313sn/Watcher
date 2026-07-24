@@ -1,0 +1,12 @@
+{
+  "name": "@watcher/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./severity": "./src/severity.js",
+    "./nagios-states": "./src/nagios-states.js",
+    "./discovery-engine": "./src/discovery-engine.js"
+  }
+}

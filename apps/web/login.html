@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div style="min-height:100vh;display:grid;place-items:center">
+    <form id="login" class="card" style="width:340px;padding:28px">
+      <div class="row" style="justify-content:center;margin-bottom:18px;gap:10px">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="var(--accent)"
+             stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <strong style="font-size:19px">Watcher</strong>
+      </div>
+      <label for="username">Username</label>
+      <input id="username" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <div id="error" style="color:var(--critical);font-size:12px;margin-top:10px;min-height:16px"></div>
+      <button class="btn primary" style="width:100%;justify-content:center;margin-top:8px">Sign in</button>
+    </form>
+  </div>
+  <script type="module" src="/src/pages/login.js"></script>
+</body>
+</html>

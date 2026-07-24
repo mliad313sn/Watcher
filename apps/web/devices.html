@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Devices · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <w-shell active="devices" title="Devices">
+    <div class="page-head">
+      <div>
+        <h1>Device inventory</h1>
+        <div class="sub" id="count"></div>
+      </div>
+      <div class="row">
+        <input id="search" placeholder="Search name or address…" style="width:260px" />
+        <select id="kind" style="width:160px">
+          <option value="">All kinds</option>
+          <option>server</option><option>switch</option><option>router</option>
+          <option>firewall</option><option>wireless_ap</option><option>pbx</option><option>other</option>
+        </select>
+        <button class="btn primary" id="add">Add device</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0">
+      <table class="data" id="table">
+        <thead>
+          <tr><th>Name</th><th>Address</th><th>Kind</th><th>Vendor / Model</th><th>Location</th><th>State</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>No devices match.</div>
+    </div>
+  </w-shell>
+  <script type="module" src="/src/pages/devices.js"></script>
+</body>
+</html>

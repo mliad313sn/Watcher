@@ -1,0 +1,45 @@
+/** Central environment configuration for the API. */
+
+function env(name, fallback) {
+  const v = process.env[name];
+  return v === undefined || v === '' ? fallback : v;
+}
+
+export const config = {
+  host: env('API_HOST', '0.0.0.0'),
+  port: Number(env('API_PORT', 8080)),
+  logLevel: env('LOG_LEVEL', 'info'),
+  corsOrigins: env('CORS_ORIGINS', 'http://localhost:5173').split(','),
+
+  jwt: {
+    secret: env('JWT_SECRET', 'dev-only-secret'),
+    ttl: env('JWT_TTL', '8h'),
+  },
+
+  pg: {
+    host: env('PG_HOST', 'localhost'),
+    port: Number(env('PG_PORT', 5432)),
+    database: env('PG_DATABASE', 'watcher'),
+    user: env('PG_USER', 'watcher'),
+    password: env('PG_PASSWORD', 'watcher'),
+    max: Number(env('PG_POOL_MAX', 10)),
+  },
+
+  tsdb: {
+    host: env('TSDB_HOST', 'localhost'),
+    port: Number(env('TSDB_PORT', 5433)),
+    database: env('TSDB_DATABASE', 'watcher_metrics'),
+    user: env('TSDB_USER', 'watcher'),
+    password: env('TSDB_PASSWORD', 'watcher'),
+    max: Number(env('TSDB_POOL_MAX', 10)),
+  },
+
+  redisUrl: env('REDIS_URL', 'redis://localhost:6379'),
+
+  nagios: {
+    statusFile: env('NAGIOS_STATUS_FILE', '/usr/local/nagios/var/status.dat'),
+    commandFile: env('NAGIOS_COMMAND_FILE', '/usr/local/nagios/var/rw/nagios.cmd'),
+    pollInterval: Number(env('NAGIOS_POLL_INTERVAL', 5000)),
+    livestatusSocket: env('NAGIOS_LIVESTATUS_SOCKET', ''),
+  },
+};

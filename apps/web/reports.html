@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reports · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <w-shell active="reports" title="Reports">
+    <div class="page-head">
+      <div>
+        <h1>Availability report</h1>
+        <div class="sub">SLA figures from the hard state-change log in TimescaleDB</div>
+      </div>
+    </div>
+    <div class="card" style="max-width:640px;margin-bottom:16px">
+      <div class="row">
+        <div class="grow">
+          <label for="r-device">Device</label>
+          <select id="r-device"></select>
+        </div>
+        <div class="grow">
+          <label for="r-check">Service (blank = host)</label>
+          <input id="r-check" placeholder="e.g. HTTP" />
+        </div>
+        <div>
+          <label for="r-days">Window</label>
+          <select id="r-days" style="width:120px">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+            <option value="365">1 year</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn primary" id="run" style="margin-top:16px">Run report</button>
+    </div>
+    <div id="result" hidden>
+      <div class="tiles" style="margin-bottom:16px">
+        <div class="tile"><div class="label">Availability</div><div class="value" id="r-pct">–</div></div>
+        <div class="tile"><div class="label">Total downtime</div><div class="value" id="r-down" style="font-size:20px">–</div></div>
+        <div class="tile"><div class="label">Outages</div><div class="value" id="r-outages">–</div></div>
+      </div>
+      <div class="card" style="padding:0">
+        <table class="data">
+          <thead><tr><th>When</th><th>Transition</th><th>Output</th></tr></thead>
+          <tbody id="r-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </w-shell>
+  <script type="module" src="/src/pages/reports.js"></script>
+</body>
+</html>

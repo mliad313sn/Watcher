@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Topology · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <w-shell active="topology" title="Topology">
+    <div class="page-head">
+      <div>
+        <h1>Network map</h1>
+        <div class="sub">Hierarchy from device parents + discovered L2/L3 adjacency. Node color = live host state.</div>
+      </div>
+    </div>
+    <div class="card" style="padding:8px">
+      <svg id="map" style="width:100%;height:calc(100vh - 220px);min-height:420px"></svg>
+    </div>
+  </w-shell>
+  <script type="module" src="/src/pages/topology.js"></script>
+</body>
+</html>

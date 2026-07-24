@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Device · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <w-shell active="devices" title="Device detail">
+    <div class="page-head">
+      <div>
+        <h1 id="name">…</h1>
+        <div class="sub" id="meta"></div>
+      </div>
+      <div class="row">
+        <select id="range" style="width:150px">
+          <option value="1">Last hour</option>
+          <option value="24" selected>Last 24 h</option>
+          <option value="168">Last 7 days</option>
+          <option value="720">Last 30 days</option>
+        </select>
+        <button class="btn" id="recheck">Re-check now</button>
+      </div>
+    </div>
+
+    <div class="tiles" style="margin-bottom:16px">
+      <div class="tile"><div class="label">CPU</div><div class="w-body"><w-gauge id="g-cpu" value="0"></w-gauge></div></div>
+      <div class="tile"><div class="label">Memory</div><div class="w-body"><w-gauge id="g-mem" value="0"></w-gauge></div></div>
+      <div class="tile"><div class="label">Uptime</div><div class="value" id="uptime" style="font-size:20px">–</div></div>
+      <div class="tile"><div class="label">Interfaces up</div><div class="value" id="ifup">–</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>Traffic <span class="dim" id="if-label"></span></h2>
+      <div class="row" style="margin-bottom:10px">
+        <select id="iface" style="width:220px"></select>
+      </div>
+      <div style="height:240px"><w-traffic id="traffic"></w-traffic></div>
+    </div>
+
+    <div class="card">
+      <h2>Services on this host</h2>
+      <w-statusgrid id="services"></w-statusgrid>
+    </div>
+  </w-shell>
+  <script type="module" src="/src/pages/device.js"></script>
+</body>
+</html>

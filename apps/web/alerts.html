@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alerts · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <w-shell active="alerts" title="Alerts">
+    <div class="page-head">
+      <div>
+        <h1>Alert console</h1>
+        <div class="sub">Correlated &amp; deduplicated — dependency-suppressed alerts are folded under their root cause</div>
+      </div>
+      <div class="row">
+        <select id="f-status" style="width:150px">
+          <option value="">Active (all)</option>
+          <option value="open">Open</option>
+          <option value="acknowledged">Acknowledged</option>
+          <option value="suppressed">Suppressed</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <select id="f-severity" style="width:130px">
+          <option value="">Any severity</option>
+          <option value="critical">Critical</option>
+          <option value="warning">Warning</option>
+          <option value="info">Info</option>
+        </select>
+        <input id="f-device" placeholder="Device…" style="width:180px" />
+      </div>
+    </div>
+    <div class="card" style="padding:0">
+      <table class="data">
+        <thead>
+          <tr><th>Severity</th><th>Status</th><th>Device / Check</th><th>Message</th>
+              <th class="num">Count</th><th>Opened</th><th></th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>No alerts — quiet out there.</div>
+    </div>
+  </w-shell>
+  <script type="module" src="/src/pages/alerts.js"></script>
+</body>
+</html>

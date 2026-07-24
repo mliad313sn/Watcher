@@ -1,0 +1,105 @@
+name: watcher
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: watcher
+      POSTGRES_USER: watcher
+      POSTGRES_PASSWORD: watcher
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/sql/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: watcher_metrics
+      POSTGRES_USER: watcher
+      POSTGRES_PASSWORD: watcher
+    ports:
+      - "5433:5432"
+    volumes:
+      - tsdb-data:/var/lib/postgresql/data
+      - ./infra/sql/timescale:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nagios:
+    build: ./infra/nagios
+    ports:
+      - "8081:80"
+    volumes:
+      # Shared with the API container/host so the connector can read status.dat
+      # and write to the external command pipe.
+      - nagios-var:/usr/local/nagios/var
+      - ./infra/nagios/objects:/usr/local/nagios/etc/objects/watcher:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      PG_HOST: postgres
+      TSDB_HOST: timescaledb
+      TSDB_PORT: "5432"
+      REDIS_URL: redis://redis:6379
+      NAGIOS_STATUS_FILE: /nagios-var/status.dat
+      NAGIOS_COMMAND_FILE: /nagios-var/rw/nagios.cmd
+    ports:
+      - "8080:8080"
+    volumes:
+      - nagios-var:/nagios-var
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+
+  poller:
+    build:
+      context: .
+      dockerfile: apps/poller/Dockerfile
+    env_file: .env
+    environment:
+      PG_HOST: postgres
+      TSDB_HOST: timescaledb
+      TSDB_PORT: "5432"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  pg-data:
+  tsdb-data:
+  nagios-var:
