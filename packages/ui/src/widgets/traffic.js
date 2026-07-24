@@ -1,8 +1,9 @@
 /**
- * <w-traffic> — dual-series SVG area chart for in/out traffic (or any pair).
- * Set data via the `series` property:
+ * <w-traffic> — dual-series SVG area chart for in/out traffic.
+ * Aura charter: electric blue for the primary (in) series with a soft glow
+ * and gradient fill, silver primary for the secondary (out) series; sharp
+ * vertices, thin grid rules, mono axis labels.
  *   el.series = { in: [{t, v}...], out: [{t, v}...] }   // v in bps
- * Renders adaptive Y-axis (K/M/G), hover crosshair with values, and a legend.
  */
 export class WTraffic extends HTMLElement {
   #series = { in: [], out: [] };
@@ -37,27 +38,32 @@ export class WTraffic extends HTMLElement {
       ? path(points) + `L${x(points.at(-1).t).toFixed(1)},${H - PAD.b}L${x(points[0].t).toFixed(1)},${H - PAD.b}Z`
       : '';
 
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
-      v: vMax * f, yPos: y(vMax * f),
-    }));
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: vMax * f, yPos: y(vMax * f) }));
 
     this.innerHTML = `
       <div style="height:100%;display:flex;flex-direction:column">
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="flex:1;width:100%">
+          <defs>
+            <linearGradient id="wt-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#4a8eff" stop-opacity="0.25"></stop>
+              <stop offset="100%" stop-color="#4a8eff" stop-opacity="0"></stop>
+            </linearGradient>
+          </defs>
           ${ticks.map((tk) => `
             <line x1="${PAD.l}" x2="${W - PAD.r}" y1="${tk.yPos}" y2="${tk.yPos}"
-                  stroke="var(--border)" stroke-width="1"></line>
+                  stroke="rgba(69, 70, 76, 0.3)" stroke-width="1"></line>
             <text x="${PAD.l - 6}" y="${tk.yPos + 3}" text-anchor="end"
-                  fill="var(--text-faint)" font-size="9">${formatBps(tk.v)}</text>`).join('')}
-          <path d="${area(this.#series.in)}" fill="var(--accent-soft)"></path>
-          <path d="${path(this.#series.in)}" fill="none" stroke="var(--accent)" stroke-width="1.6"></path>
-          <path d="${area(this.#series.out)}" fill="rgba(46,163,108,0.10)"></path>
-          <path d="${path(this.#series.out)}" fill="none" stroke="var(--ok)" stroke-width="1.6"
-                stroke-dasharray="4 2"></path>
+                  fill="var(--text-faint)" font-size="9"
+                  font-family="var(--mono)">${formatBps(tk.v)}</text>`).join('')}
+          <path d="${area(this.#series.in)}" fill="url(#wt-fill)"></path>
+          <path d="${path(this.#series.in)}" fill="none" stroke="var(--accent)" stroke-width="1.5"
+                style="filter: drop-shadow(0 0 3px rgba(74,142,255,0.6))"></path>
+          <path d="${path(this.#series.out)}" fill="none" stroke="var(--text-head)" stroke-width="1.2"
+                stroke-dasharray="4 3" opacity="0.7"></path>
         </svg>
-        <div class="row" style="font-size:11px;gap:16px;justify-content:center;color:var(--text-dim)">
-          <span><span style="color:var(--accent)">▬</span> in</span>
-          <span><span style="color:var(--ok)">▬ ▬</span> out</span>
+        <div class="row label-caps" style="font-size:10px;gap:16px;justify-content:center">
+          <span><span style="color:var(--accent)">▬</span> IN</span>
+          <span><span style="color:var(--text-head)">▬ ▬</span> OUT</span>
         </div>
       </div>`;
   }

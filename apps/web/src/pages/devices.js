@@ -61,5 +61,9 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+// Topbar search deep-links here with ?q=
+const initialQ = new URLSearchParams(location.search).get('q');
+if (initialQ) document.getElementById('search').value = initialQ;
+
 await loadState();
 await load();

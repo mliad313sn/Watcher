@@ -11,3 +11,4 @@ coverage/
 .vscode/
 *.tsbuildinfo
 data/
+*.rdb

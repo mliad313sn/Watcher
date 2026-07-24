@@ -8,7 +8,16 @@
 </head>
 <body>
   <w-shell active="dashboard" title="Network Operations">
-    <div class="tiles" id="tiles" style="margin-bottom:16px"></div>
+    <div class="page-head">
+      <div>
+        <h1>Global Health Dashboard</h1>
+        <div class="sub">Real-time telemetry and infrastructure status</div>
+      </div>
+      <button class="btn mono" id="refresh-note" style="font-size:12px">
+        <span class="material-symbols-outlined">refresh</span>Auto-refresh: 30s
+      </button>
+    </div>
+    <div class="tiles" id="tiles" style="margin-bottom:8px"></div>
 
     <div class="dash-grid" id="grid" style="margin-bottom:16px">
       <div class="widget" style="grid-column:1 / span 3;grid-row:1 / span 3">

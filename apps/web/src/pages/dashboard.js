@@ -9,19 +9,26 @@ const problems = document.getElementById('problems');
 const heatmap = document.getElementById('heatmap');
 
 function renderTiles(summary) {
+  const totalHosts = summary.hosts.up + summary.hosts.down + summary.hosts.unreachable;
+  const totalSvcs = summary.services.ok + summary.services.warning
+    + summary.services.critical + summary.services.unknown;
+  const pct = (n, total) => (total > 0 ? Math.max(2, Math.round((n / total) * 100)) : 0);
+
+  // Aura stat cards: label-caps, display number, faint icon, glowing meter.
   const tiles = [
-    ['Hosts up', summary.hosts.up, 'ok'],
-    ['Hosts down', summary.hosts.down, summary.hosts.down > 0 ? 'critical' : ''],
-    ['Unreachable', summary.hosts.unreachable, summary.hosts.unreachable > 0 ? 'warning' : ''],
-    ['Services OK', summary.services.ok, 'ok'],
-    ['Warning', summary.services.warning, summary.services.warning > 0 ? 'warning' : ''],
-    ['Critical', summary.services.critical, summary.services.critical > 0 ? 'critical' : ''],
-    ['Acknowledged', summary.acknowledged, ''],
+    ['Systems Up', summary.hosts.up, 'ok', 'check_circle', pct(summary.hosts.up, totalHosts)],
+    ['Systems Down', summary.hosts.down, summary.hosts.down > 0 ? 'critical' : '', 'cancel', pct(summary.hosts.down, totalHosts)],
+    ['Unreachable', summary.hosts.unreachable, summary.hosts.unreachable > 0 ? 'warning' : '', 'signal_disconnected', pct(summary.hosts.unreachable, totalHosts)],
+    ['Services OK', summary.services.ok, 'ok', 'task_alt', pct(summary.services.ok, totalSvcs)],
+    ['Warnings', summary.services.warning, summary.services.warning > 0 ? 'warning' : '', 'warning', pct(summary.services.warning, totalSvcs)],
+    ['Critical Alerts', summary.services.critical, summary.services.critical > 0 ? 'critical' : '', 'gpp_maybe', pct(summary.services.critical, totalSvcs)],
   ];
-  document.getElementById('tiles').innerHTML = tiles.map(([label, value, cls]) => `
+  document.getElementById('tiles').innerHTML = tiles.map(([label, value, cls, icon, meterPct]) => `
     <div class="tile ${cls}">
+      <span class="material-symbols-outlined tile-icon">${icon}</span>
       <div class="label">${label}</div>
       <div class="value">${value}</div>
+      <div class="meter"><i style="width:${value > 0 ? meterPct : 0}%"></i></div>
     </div>`).join('');
 }
 
