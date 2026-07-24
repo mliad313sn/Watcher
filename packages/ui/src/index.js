@@ -6,3 +6,4 @@ export { WHeatmap } from './widgets/heatmap.js';
 export { WStatusgrid } from './widgets/statusgrid.js';
 export { WEventfeed } from './widgets/eventfeed.js';
 export { DashGrid } from './grid.js';
+export { escapeHtml, escapeAttr } from './escape.js';

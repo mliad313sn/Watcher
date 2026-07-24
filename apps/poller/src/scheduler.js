@@ -17,15 +17,27 @@ export class Scheduler {
    * @param {(id: string) => Promise<object>} deps.getCredential decrypted blob by id
    * @param {number} [deps.concurrency]
    */
-  constructor({ pg, log, connectors, getCredential, concurrency = 32 }) {
+  constructor({ pg, log, connectors, getCredential, concurrency = 32, pollTimeoutMs = 30_000 }) {
     this.pg = pg;
     this.log = log;
     this.connectors = connectors;
     this.getCredential = getCredential;
     this.concurrency = concurrency;
+    this.pollTimeoutMs = pollTimeoutMs;
     this.active = 0;
+    this.skipped = 0;          // polls shed because the pool was saturated
     this.jobs = new Map();     // assignment id → {timer, assignment}
+    this.credCache = new Map();// credential id → decrypted blob (invalidated on reload)
     this.reloadTimer = null;
+  }
+
+  /** Decrypt + cache credentials so we don't hit the DB / KDF on every poll. */
+  async #cred(id) {
+    if (!id) return {};
+    if (this.credCache.has(id)) return this.credCache.get(id);
+    const cred = await this.getCredential(id);
+    this.credCache.set(id, cred);
+    return cred;
   }
 
   async start() {
@@ -43,6 +55,7 @@ export class Scheduler {
   }
 
   async reload() {
+    this.credCache.clear(); // pick up credential rotations within a minute
     const { rows } = await this.pg.query(
       `SELECT pa.id, pa.protocol, pa.interval_s, pa.credential_id, pa.config,
               d.id AS device_id, d.name, host(d.address) AS address
@@ -80,19 +93,29 @@ export class Scheduler {
   }
 
   async #run(job) {
-    if (this.active >= this.concurrency) return; // shed load; next cycle catches up
     const a = job.assignment;
+    // Load shedding is a real data gap — count it and surface it (issue M2)
+    // instead of dropping the poll silently.
+    if (this.active >= this.concurrency) {
+      this.skipped++;
+      if (this.skipped % 100 === 1) {
+        this.log.warn({ skipped: this.skipped, concurrency: this.concurrency },
+          'poll(s) skipped — poller saturated; consider raising POLLER_CONCURRENCY or scaling out');
+      }
+      return;
+    }
     const connector = this.connectors.get(a.protocol);
     if (!connector) return;
 
     this.active++;
     const startedAt = Date.now();
     try {
-      const cred = a.credential_id ? await this.getCredential(a.credential_id) : {};
-      await connector.poll(
-        { id: a.device_id, name: a.name, address: a.address },
-        cred,
-        a.config ?? {},
+      const cred = await this.#cred(a.credential_id);
+      // Hard timeout so a hung connector (stuck WinRM fetch, dead AMI socket)
+      // can't hold a concurrency slot forever and starve the fleet (issue M2).
+      await this.#withTimeout(
+        connector.poll({ id: a.device_id, name: a.name, address: a.address }, cred, a.config ?? {}),
+        `${a.protocol} poll of ${a.name}`,
       );
       this.log.debug({ device: a.name, protocol: a.protocol, ms: Date.now() - startedAt }, 'poll ok');
     } catch (err) {
@@ -100,5 +123,13 @@ export class Scheduler {
     } finally {
       this.active--;
     }
+  }
+
+  #withTimeout(promise, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`timed out after ${this.pollTimeoutMs}ms: ${label}`)), this.pollTimeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 }

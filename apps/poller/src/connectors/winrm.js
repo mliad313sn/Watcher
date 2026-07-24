@@ -88,13 +88,21 @@ export class WinrmConnector {
   }
 
   endpointFor(address, cred) {
-    const https = cred.https ?? false;
+    // Secure by default (issue #4). HTTP Basic over 5985 sends privileged
+    // Windows/AD credentials in cleartext; require an explicit opt-in.
+    const https = cred.https ?? true;
     const port = cred.port ?? (https ? 5986 : 5985);
     return `${https ? 'https' : 'http'}://${address}:${port}/wsman`;
   }
 
   /** Run a WQL query, following Pull continuations. Returns array of objects. */
   async query(address, cred, wql) {
+    const https = cred.https ?? true;
+    if (!https && !cred.allowInsecure) {
+      throw new Error(
+        'WinRM Basic auth over plaintext HTTP is refused (credentials would be sent in cleartext). '
+        + 'Use HTTPS/5986, or set allowInsecure:true on the credential to override.');
+    }
     const endpoint = this.endpointFor(address, cred);
     const auth = 'Basic ' + Buffer.from(`${cred.user}:${cred.password}`).toString('base64');
     const all = [];

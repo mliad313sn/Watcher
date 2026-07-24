@@ -10,7 +10,8 @@ export default async function nagiosRoutes(fastify, opts) {
 
   /** Full live state dump — grids and the status map read this once, then
    *  stay current via the WebSocket state stream. */
-  fastify.get('/state', { preHandler: fastify.requireRole('viewer') }, async () => {
+  fastify.get('/state', { preHandler: fastify.requireRole('viewer') }, async (request) => {
+    const tenantId = request.user.tenantId;
     const keys = await fastify.redis.smembers(REDIS_KEYS.stateIndex);
     if (keys.length === 0) return { hosts: [], services: [] };
 
@@ -22,6 +23,8 @@ export default async function nagiosRoutes(fastify, opts) {
     const services = [];
     for (const [err, hash] of results) {
       if (err || !hash?.kind) continue;
+      // Tenant isolation: never leak another tenant's objects (issue #3).
+      if (hash.tenantId && hash.tenantId !== tenantId) continue;
       const obj = {
         ...hash,
         state: Number(hash.state),
@@ -38,10 +41,11 @@ export default async function nagiosRoutes(fastify, opts) {
   });
 
   /** Rolled-up counts for the topbar / summary tiles. */
-  fastify.get('/summary', { preHandler: fastify.requireRole('viewer') }, async () => {
+  fastify.get('/summary', { preHandler: fastify.requireRole('viewer') }, async (request) => {
+    const tenantId = request.user.tenantId;
     const keys = await fastify.redis.smembers(REDIS_KEYS.stateIndex);
     const pipeline = fastify.redis.pipeline();
-    for (const key of keys) pipeline.hmget(key, 'kind', 'state', 'acknowledged', 'inDowntime');
+    for (const key of keys) pipeline.hmget(key, 'kind', 'state', 'acknowledged', 'inDowntime', 'tenantId');
     const results = await pipeline.exec();
 
     const summary = {
@@ -54,7 +58,8 @@ export default async function nagiosRoutes(fastify, opts) {
     const SVC_BUCKETS = ['ok', 'warning', 'critical', 'unknown'];
     for (const [err, row] of results) {
       if (err || !row) continue;
-      const [kind, state, ack, downtime] = row;
+      const [kind, state, ack, downtime, objTenant] = row;
+      if (objTenant && objTenant !== tenantId) continue; // tenant isolation (#3)
       if (kind === 'host') summary.hosts[HOST_BUCKETS[Number(state)] ?? 'down'] += 1;
       else if (kind === 'service') summary.services[SVC_BUCKETS[Number(state)] ?? 'unknown'] += 1;
       if (ack === '1') summary.acknowledged += 1;

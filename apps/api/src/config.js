@@ -41,5 +41,17 @@ export const config = {
     commandFile: env('NAGIOS_COMMAND_FILE', '/usr/local/nagios/var/rw/nagios.cmd'),
     pollInterval: Number(env('NAGIOS_POLL_INTERVAL', 5000)),
     livestatusSocket: env('NAGIOS_LIVESTATUS_SOCKET', ''),
+    // Objects are considered stale (monitoring blind) if status.dat hasn't been
+    // rewritten within this window. Default: max(30s, 4× poll interval).
+    staleThresholdMs: process.env.NAGIOS_STALE_THRESHOLD_MS
+      ? Number(process.env.NAGIOS_STALE_THRESHOLD_MS) : undefined,
+  },
+
+  notify: {
+    // One page per incident per cooldown (seconds); escalations bypass it.
+    cooldownS: Number(env('NOTIFY_COOLDOWN_S', 300)),
+    // Optional catch-all webhook so a fresh install pages somewhere even
+    // before any alert_rules are configured.
+    fallbackWebhook: env('NOTIFY_FALLBACK_WEBHOOK', ''),
   },
 };

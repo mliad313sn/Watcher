@@ -42,7 +42,8 @@ export function liveEvents(channels, onEvent) {
 
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    socket = new WebSocket(`${proto}://${location.host}/ws?token=${token()}`);
+    // Auth via subprotocol, not the URL, so the token never lands in logs.
+    socket = new WebSocket(`${proto}://${location.host}/ws`, ['bearer', token()]);
     socket.onopen = () => socket.send(JSON.stringify({ subscribe: channels }));
     socket.onmessage = (e) => {
       try {

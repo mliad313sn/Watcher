@@ -1,14 +1,11 @@
 import '@watcher/ui';
+import { escapeHtml as esc, escapeAttr } from '@watcher/ui';
 import { api, requireAuth, liveEvents } from '../lib/api.js';
 
 requireAuth();
 
 const rowsEl = document.getElementById('rows');
 const emptyEl = document.getElementById('empty');
-
-function esc(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
 
 async function load() {
   const p = new URLSearchParams();
@@ -32,7 +29,7 @@ async function load() {
       <td class="dim" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.message)}</td>
       <td class="num">${a.occurrences}</td>
       <td class="dim mono" style="white-space:nowrap">${new Date(a.opened_at).toLocaleString()}</td>
-      <td>${a.status === 'open' ? `<button class="btn" data-ack="${a.id}" data-host="${esc(a.device_name)}" data-svc="${esc(a.check_name)}">Ack</button>` : ''}</td>
+      <td>${a.status === 'open' ? `<button class="btn" data-ack="${escapeAttr(a.id)}" data-host="${escapeAttr(a.device_name)}" data-svc="${escapeAttr(a.check_name)}">Ack</button>` : ''}</td>
     </tr>`).join('');
 
   rowsEl.querySelectorAll('[data-ack]').forEach((btn) => {

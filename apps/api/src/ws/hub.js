@@ -6,6 +6,17 @@
  *   {"subscribe": ["state", "alerts", "metrics"]}
  * and receive envelopes:
  *   {"channel": "alerts", "data": {...}}
+ *
+ * Hardening (issues #3, #4, WS-low):
+ *   - Auth token is read from the `Sec-WebSocket-Protocol` header
+ *     (client connects with `['bearer', <jwt>]`), not the URL query string,
+ *     so it never lands in access logs. A `?token=` fallback remains for
+ *     non-browser clients.
+ *   - `state` and `alerts` events are filtered to the socket's tenant, so a
+ *     viewer never receives another tenant's data.
+ *   - Backpressure: events are dropped for a socket whose send buffer is
+ *     backed up, instead of buffering unboundedly under an event storm.
+ *   - Token expiry is enforced for the life of the connection.
  */
 import fp from 'fastify-plugin';
 import websocket from '@fastify/websocket';
@@ -17,41 +28,80 @@ const CHANNELS = {
   metrics: REDIS_KEYS.eventsMetrics,
 };
 
+// Drop events for a socket once its outbound buffer exceeds this (bytes).
+const MAX_BUFFERED_BYTES = 1 << 20; // 1 MiB
+
+function tenantOfEvent(name, data) {
+  if (name === 'alerts') return data?.alert?.tenant_id ?? null;
+  if (name === 'state') return data?.tenantId ?? null;
+  return null; // metrics ticks are keyed by opaque device id — not tenant-filtered
+}
+
+function bearerFromRequest(request) {
+  // Preferred: Sec-WebSocket-Protocol: "bearer, <jwt>"
+  const proto = request.headers['sec-websocket-protocol'];
+  if (proto) {
+    const parts = proto.split(',').map((p) => p.trim());
+    const idx = parts.indexOf('bearer');
+    if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+  }
+  // Fallback: ?token= (non-browser clients)
+  try {
+    return new URL(request.url, 'http://x').searchParams.get('token') ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export default fp(async function wsHub(fastify) {
   await fastify.register(websocket);
 
-  /** Map<WebSocket, Set<channelName>> */
+  /** Map<WebSocket, { subs: Set<string>, tenantId: string, exp: number }> */
   const clients = new Map();
 
   await fastify.redisSub.subscribe(...Object.values(CHANNELS));
   fastify.redisSub.on('message', (redisChannel, message) => {
     const name = Object.keys(CHANNELS).find((k) => CHANNELS[k] === redisChannel);
     if (!name) return;
-    const envelope = JSON.stringify({ channel: name, data: JSON.parse(message) });
-    for (const [socket, subs] of clients) {
-      if (subs.has(name) && socket.readyState === socket.OPEN) {
-        socket.send(envelope);
-      }
+    const data = JSON.parse(message);
+    const eventTenant = tenantOfEvent(name, data);
+    const envelope = JSON.stringify({ channel: name, data });
+    const nowS = Date.now() / 1000;
+
+    for (const [socket, info] of clients) {
+      if (!info.subs.has(name)) continue;
+      if (socket.readyState !== socket.OPEN) continue;
+      // Enforce token expiry mid-connection.
+      if (info.exp && nowS > info.exp) { socket.close(4401, 'token expired'); continue; }
+      // Tenant isolation for sensitive channels.
+      if (eventTenant !== null && eventTenant !== info.tenantId) continue;
+      // Backpressure: shed rather than buffer unboundedly.
+      if (socket.bufferedAmount > MAX_BUFFERED_BYTES) continue;
+      socket.send(envelope);
     }
   });
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
-    // Authenticate via ?token= since browsers cannot set WS headers.
+    let claims;
     try {
-      const token = new URL(request.url, 'http://x').searchParams.get('token');
-      fastify.jwt.verify(token ?? '');
+      claims = fastify.jwt.verify(bearerFromRequest(request));
     } catch {
       socket.close(4401, 'unauthorized');
       return;
     }
 
-    clients.set(socket, new Set(['state', 'alerts']));
+    clients.set(socket, {
+      subs: new Set(['state', 'alerts']),
+      tenantId: claims.tenantId,
+      exp: claims.exp,
+    });
 
     socket.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
         if (Array.isArray(msg.subscribe)) {
-          clients.set(socket, new Set(msg.subscribe.filter((c) => c in CHANNELS)));
+          const info = clients.get(socket);
+          if (info) info.subs = new Set(msg.subscribe.filter((c) => c in CHANNELS));
         }
       } catch {
         /* ignore malformed frames */

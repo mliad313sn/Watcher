@@ -1,4 +1,5 @@
 import '@watcher/ui';
+import { escapeHtml as esc, escapeAttr } from '@watcher/ui';
 import { api, requireAuth, liveEvents } from '../lib/api.js';
 
 requireAuth();
@@ -65,15 +66,24 @@ function render() {
         const state = hostState.get(n.name);
         const color = state ? (STATE_COLOR[state.state] ?? 'var(--unknown)') : 'var(--unknown)';
         return `
-          <g style="cursor:pointer" onclick="location.href='/device.html?id=${n.id}&name=${encodeURIComponent(n.name)}'">
+          <g style="cursor:pointer" data-node-id="${escapeAttr(n.id)}" data-node-name="${escapeAttr(n.name)}">
             <circle cx="${p.x}" cy="${p.y}" r="17" fill="var(--bg-raised)"
                     stroke="${color}" stroke-width="2.5"></circle>
             <circle cx="${p.x}" cy="${p.y}" r="5" fill="${color}"></circle>
             <text x="${p.x}" y="${p.y + 33}" text-anchor="middle" fill="var(--text-dim)"
-                  font-size="11">${n.name}</text>
+                  font-size="11">${esc(n.name)}</text>
           </g>`;
       }).join('')}
     </g>`;
+
+  // Delegated navigation — no inline handlers (CSP-friendly).
+  svg.querySelectorAll('[data-node-id]').forEach((g) => {
+    g.addEventListener('click', () => {
+      const id = g.getAttribute('data-node-id');
+      const name = g.getAttribute('data-node-name');
+      location.href = `/device.html?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name)}`;
+    });
+  });
 }
 
 async function load() {

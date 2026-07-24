@@ -5,6 +5,8 @@
  * always hit the cheapest table: raw < 6h, 5m rollup < 7d, 1h rollup < 90d,
  * 1d rollup beyond — the UI never needs to know about aggregates.
  */
+import { REDIS_KEYS } from '@watcher/shared';
+import { integrateDowntime } from './availability.js';
 
 const SOURCES = [
   { maxRangeMs: 6 * 3600e3, table: 'metrics', timeCol: 'time', valueExpr: 'value AS avg_value, value AS max_value, value AS min_value' },
@@ -97,27 +99,52 @@ export default async function metricsRoutes(fastify) {
     preHandler: fastify.requireRole('viewer'),
   }, async (request) => {
     const { device, check = '', days } = request.query;
-    const { rows } = await fastify.tsdb.query(
-      `SELECT time, from_state, to_state, output
-       FROM state_changes
-       WHERE device_name = $1 AND check_name = $2 AND time > now() - make_interval(days => $3)
-       ORDER BY time ASC`,
-      [device, check, days],
-    );
-
-    // Integrate time spent in non-OK state between transitions.
     const now = Date.now();
     const windowStart = now - days * 86400e3;
-    let downMs = 0;
-    let cursor = windowStart;
-    let currentBad = rows.length > 0 && rows[0].from_state !== 0;
-    for (const row of rows) {
-      const t = new Date(row.time).getTime();
-      if (currentBad) downMs += t - cursor;
-      cursor = t;
-      currentBad = row.to_state !== 0;
+    const windowStartIso = new Date(windowStart).toISOString();
+
+    const [inWindow, prior] = await Promise.all([
+      fastify.tsdb.query(
+        `SELECT time, from_state, to_state, output
+         FROM state_changes
+         WHERE device_name = $1 AND check_name = $2 AND time >= $3
+         ORDER BY time ASC`,
+        [device, check, windowStartIso],
+      ),
+      // The state at the START of the window = to_state of the last transition
+      // strictly before it. Without this, a device that was already down before
+      // the window (and never transitioned inside it) wrongly reported 100%.
+      fastify.tsdb.query(
+        `SELECT to_state
+         FROM state_changes
+         WHERE device_name = $1 AND check_name = $2 AND time < $3
+         ORDER BY time DESC LIMIT 1`,
+        [device, check, windowStartIso],
+      ),
+    ]);
+    const rows = inWindow.rows;
+
+    // Seed the window's opening state, most-reliable source first:
+    //   1. last transition before the window,
+    //   2. the from_state of the first in-window transition,
+    //   3. the object's current live state (Redis) as a last resort.
+    let initialBad;
+    if (prior.rows.length) {
+      initialBad = prior.rows[0].to_state !== 0;
+    } else if (rows.length) {
+      initialBad = rows[0].from_state !== 0;
+    } else {
+      const stateKey = check
+        ? REDIS_KEYS.serviceState(device, check)
+        : REDIS_KEYS.hostState(device);
+      const cur = await fastify.redis.hget(stateKey, 'state');
+      initialBad = cur != null ? Number(cur) !== 0 : false;
     }
-    if (currentBad) downMs += now - cursor;
+
+    // Integrate time spent in non-OK state between transitions.
+    const downMs = integrateDowntime({
+      transitions: rows, initialBad, windowStartMs: windowStart, nowMs: now,
+    });
 
     const totalMs = now - windowStart;
     return {

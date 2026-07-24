@@ -1,7 +1,7 @@
 # Nagios Core check engine for the Watcher stack.
 # Uses the well-maintained community image; Watcher-specific object config is
 # mounted at /usr/local/nagios/etc/objects/watcher (see docker-compose.yml).
-FROM jasonrivers/nagios:latest
+FROM jasonrivers/nagios:4.5.9
 
 # Make sure the external command file is enabled and status.dat refreshes fast
 # enough for near-real-time dashboards.

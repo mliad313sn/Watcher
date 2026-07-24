@@ -1,4 +1,5 @@
 import '@watcher/ui';
+import { escapeHtml as esc, escapeAttr } from '@watcher/ui';
 import { api, requireAuth, chipClassFor } from '../lib/api.js';
 
 requireAuth();
@@ -6,10 +7,6 @@ requireAuth();
 const tbody = document.querySelector('#table tbody');
 const emptyEl = document.getElementById('empty');
 let hostState = new Map();
-
-function esc(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
 
 async function load() {
   const q = document.getElementById('search').value.trim();
@@ -28,7 +25,7 @@ async function load() {
       ? `<span class="chip ${chipClassFor(state)}">${['UP', 'DOWN', 'UNREACHABLE'][state.state] ?? '?'}</span>`
       : '<span class="chip unknown">unmonitored</span>';
     return `
-      <tr onclick="location.href='/device.html?id=${d.id}&name=${encodeURIComponent(d.name)}'" style="cursor:pointer">
+      <tr data-id="${escapeAttr(d.id)}" data-name="${escapeAttr(d.name)}" style="cursor:pointer">
         <td><strong>${esc(d.name)}</strong></td>
         <td class="mono">${esc(d.address ?? '')}</td>
         <td>${esc(d.kind)}</td>
@@ -37,6 +34,14 @@ async function load() {
         <td>${chip}</td>
       </tr>`;
   }).join('');
+
+  // Delegated navigation — no inline handlers (CSP-friendly).
+  tbody.querySelectorAll('tr[data-id]').forEach((tr) => {
+    tr.addEventListener('click', () => {
+      location.href = `/device.html?id=${encodeURIComponent(tr.dataset.id)}`
+        + `&name=${encodeURIComponent(tr.dataset.name)}`;
+    });
+  });
 }
 
 async function loadState() {

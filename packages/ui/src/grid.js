@@ -6,6 +6,8 @@
  * the new layout is reported through onLayoutChange so the page can PUT
  * /api/dashboards/:id/layout.
  */
+import { escapeHtml } from './escape.js';
+
 export class DashGrid {
   /**
    * @param {HTMLElement} container element with class="dash-grid"
@@ -30,7 +32,7 @@ export class DashGrid {
     el.dataset.widgetId = widget.id;
     this.#place(el, widget);
     el.innerHTML = `
-      <div class="w-title" draggable="true">${widget.title || widget.type}</div>
+      <div class="w-title" draggable="true">${escapeHtml(widget.title || widget.type)}</div>
       <div class="w-body"></div>`;
 
     const handle = el.querySelector('.w-title');

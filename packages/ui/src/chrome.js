@@ -7,6 +7,7 @@
  * Usage (in each page):
  *   <w-shell active="alerts" title="Alerts"> ...page content... </w-shell>
  */
+import { escapeHtml, escapeAttr } from './escape.js';
 
 const NAV = [
   { id: 'dashboard', href: '/index.html', label: 'Global View', icon: 'language' },
@@ -47,13 +48,13 @@ export class WShell extends HTMLElement {
           <div class="w-sidebar-foot">
             <a href="#" id="w-logout">
               <span class="material-symbols-outlined">logout</span>
-              <span>Sign out${user ? ` · ${user.displayName ?? user.username}` : ''}</span>
+              <span>Sign out${user ? ` · ${escapeHtml(user.displayName ?? user.username)}` : ''}</span>
             </a>
           </div>
         </aside>
         <div class="main">
           <header class="w-topbar">
-            <strong class="w-topbar-title">${title}</strong>
+            <strong class="w-topbar-title">${escapeHtml(title)}</strong>
             <div class="grow" style="display:flex;justify-content:center">
               <div class="w-search">
                 <span class="material-symbols-outlined">search</span>

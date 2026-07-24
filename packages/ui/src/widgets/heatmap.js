@@ -5,6 +5,8 @@
  *   el.cells = [{ id, label, value, state }]
  * Emits 'cell-click' with the cell.
  */
+import { escapeAttr } from '../escape.js';
+
 export class WHeatmap extends HTMLElement {
   #cells = [];
 
@@ -54,10 +56,6 @@ export class WHeatmap extends HTMLElement {
       });
     });
   }
-}
-
-function escapeAttr(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 }
 
 customElements.define('w-heatmap', WHeatmap);

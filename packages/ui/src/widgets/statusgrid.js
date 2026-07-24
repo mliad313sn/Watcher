@@ -3,6 +3,8 @@
  * el.rows = [{ host, service, stateName, output, chipClass }]
  * Emits 'row-click' with the row.
  */
+import { escapeHtml as esc } from '../escape.js';
+
 export class WStatusgrid extends HTMLElement {
   #rows = [];
 
@@ -39,10 +41,6 @@ export class WStatusgrid extends HTMLElement {
       });
     });
   }
-}
-
-function esc(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 customElements.define('w-statusgrid', WStatusgrid);

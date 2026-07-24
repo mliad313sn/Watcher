@@ -1,4 +1,5 @@
 import '@watcher/ui';
+import { escapeHtml as esc } from '@watcher/ui';
 import { api, requireAuth, chipClassFor } from '../lib/api.js';
 
 requireAuth();
@@ -41,7 +42,7 @@ async function loadGauges() {
     const up = values.filter((v) => v.value === 1);
     document.getElementById('ifup').textContent = `${up.length}/${values.length}`;
     ifaceSel.innerHTML = values.map((v) =>
-      `<option ${v.value !== 1 ? 'disabled' : ''}>${v.instance}</option>`).join('');
+      `<option ${v.value !== 1 ? 'disabled' : ''}>${esc(v.instance)}</option>`).join('');
   } catch { /* ignore */ }
 }
 

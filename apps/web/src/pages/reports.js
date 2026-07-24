@@ -1,4 +1,5 @@
 import '@watcher/ui';
+import { escapeHtml as esc, escapeAttr } from '@watcher/ui';
 import { api, requireAuth } from '../lib/api.js';
 
 requireAuth();
@@ -6,11 +7,9 @@ requireAuth();
 const deviceSel = document.getElementById('r-device');
 
 const { devices } = await api('/devices?limit=1000');
-deviceSel.innerHTML = devices.map((d) => `<option value="${d.name}">${d.name}</option>`).join('');
-
-function esc(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
+deviceSel.innerHTML = devices
+  .map((d) => `<option value="${escapeAttr(d.name)}">${esc(d.name)}</option>`)
+  .join('');
 
 function fmtDuration(s) {
   if (s < 60) return `${s}s`;

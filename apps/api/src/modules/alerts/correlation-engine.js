@@ -4,30 +4,33 @@
  * Consumes the raw state stream (watcher:events:state) and produces a curated
  * alert stream designed to prevent alert fatigue:
  *
- *  severity   Nagios states → critical / warning / info (see @watcher/shared).
- *  dedup      one open alert per (device, check); repeat events bump
- *             `occurrences` instead of creating new rows.
- *  deps       if a device's ancestor (devices.parent_id chain) has an open
- *             critical host alert, new child alerts are born SUPPRESSED and
- *             linked to the root cause — the NOC sees one page, not fifty.
- *  flapping   Nagios's own flap detection is honored: flapping objects get a
- *             single 'flapping' alert instead of a stream of transitions.
- *  clear      healthy hard states resolve any open alert for the object, and
- *             resolving a parent's alert un-suppresses its children so
- *             anything still broken independently re-raises visibly.
+ *  severity     Nagios states → critical / warning / info (see @watcher/shared).
+ *  downtime     objects in a Nagios scheduled-downtime window are recorded but
+ *               kept `suppressed` and never dispatched (issue #1).
+ *  ack          objects acknowledged in Nagios open as `acknowledged` and stay
+ *               that way unless they escalate (issue #1).
+ *  dedup        one open alert per (device, check); repeat events bump
+ *               `occurrences` instead of creating new rows.
+ *  deps         children of a device with an open critical host alert are born
+ *               (or become) suppressed and linked to the root cause. Suppression
+ *               is applied in BOTH directions — when a child alerts first and its
+ *               parent fails later, the parent's alert retro-suppresses the
+ *               already-open children (fixes the ordering race, issue M3).
+ *  escalation   an acknowledged alert that escalates in severity re-opens so it
+ *               pages again (issue M3).
+ *  flapping     Nagios flap state is honoured, and a very recently resolved
+ *               alert that re-fires is re-opened + flagged flapping instead of
+ *               spawning a fresh row (damps sub-threshold flap churn, issue M3).
+ *  clear        healthy hard states resolve open alerts; resolving a root cause
+ *               un-suppresses its children so anything still broken re-surfaces.
  *
- * Every mutation is published to watcher:events:alerts for live UIs.
+ * Every mutation is published to watcher:events:alerts for live UIs + notifier.
  */
-import { REDIS_KEYS, severityFor, stateName } from '@watcher/shared';
+import { REDIS_KEYS, severityFor, stateName, SEVERITY_WEIGHT } from '@watcher/shared';
+
+const FLAP_REOPEN_WINDOW_MS = 5 * 60 * 1000;
 
 export class CorrelationEngine {
-  /**
-   * @param {object} deps
-   * @param {import('ioredis').Redis} deps.redis     command connection
-   * @param {import('ioredis').Redis} deps.redisSub  subscriber connection
-   * @param {import('pg').Pool} deps.pg              config-plane pool
-   * @param {object} deps.log
-   */
   constructor({ redis, redisSub, pg, log }) {
     this.redis = redis;
     this.redisSub = redisSub;
@@ -51,10 +54,8 @@ export class CorrelationEngine {
     if (this.handler) this.redisSub.off('message', this.handler);
   }
 
-  /** @param {object} event normalized state-change event from the streamer */
   async processEvent(event) {
-    // Soft states are Nagios retries in progress — never alert on them.
-    if (!event.hard) return;
+    if (!event.hard) return; // soft states are Nagios retries — never alert
 
     const isHost = event.kind === 'host';
     const severity = severityFor(isHost, event.state);
@@ -68,33 +69,87 @@ export class CorrelationEngine {
 
   async #raise(event, severity, isHost) {
     const device = await this.#lookupDevice(event.host);
-    const tenantId = device?.tenant_id ?? (await this.#defaultTenant());
-    const rootCause = device ? await this.#findRootCause(device) : null;
+    const tenantId = device?.tenant_id ?? event.tenantId ?? (await this.#defaultTenant());
+    const checkName = event.service ?? '';
 
-    const status = rootCause ? 'suppressed' : 'open';
+    // Decide the alert's status. Precedence: dependency suppression, then
+    // scheduled downtime, then Nagios ack, else open+actionable.
+    const rootCause = device ? await this.#findRootCause(device) : null;
+    let status = 'open';
+    if (rootCause) status = 'suppressed';
+    else if (event.inDowntime) status = 'suppressed';
+    else if (event.acknowledged) status = 'acknowledged';
+
     const message = event.flapping
-      ? `${event.host}${event.service ? '/' + event.service : ''} is flapping`
+      ? `${event.host}${checkName ? '/' + checkName : ''} is flapping`
       : `${stateName(isHost, event.state)}: ${event.output || '(no output)'}`;
 
-    // Dedup upsert against the partial unique index on open-ish alerts.
-    const { rows } = await this.pg.query(
-      `INSERT INTO alerts (tenant_id, device_id, device_name, check_name,
-                           severity, status, message, flapping, suppressed_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (tenant_id, device_name, check_name)
-         WHERE status IN ('open', 'acknowledged', 'suppressed')
-       DO UPDATE SET
-         severity    = EXCLUDED.severity,
-         message     = EXCLUDED.message,
-         flapping    = EXCLUDED.flapping,
-         occurrences = alerts.occurrences + 1,
-         updated_at  = now()
-       RETURNING *`,
-      [tenantId, device?.id ?? null, event.host, event.service ?? '',
-       severity, status, message, event.flapping ?? false, rootCause],
+    // Is there already an open-ish alert for this (device, check)?
+    const existing = await this.pg.query(
+      `SELECT id, severity, status FROM alerts
+       WHERE tenant_id = $1 AND device_name = $2 AND check_name = $3
+         AND status IN ('open', 'acknowledged', 'suppressed')
+       LIMIT 1`,
+      [tenantId, event.host, checkName],
     );
 
-    await this.#publish(rows[0].occurrences > 1 ? 'updated' : 'raised', rows[0]);
+    let alert;
+    if (existing.rows.length) {
+      const cur = existing.rows[0];
+      // Escalation: an acknowledged (or suppressed-by-downtime) alert whose
+      // severity increases re-opens so it pages again.
+      const escalated = SEVERITY_WEIGHT[severity] > SEVERITY_WEIGHT[cur.severity];
+      let newStatus = cur.status;
+      if (rootCause) newStatus = 'suppressed';
+      else if (cur.status === 'acknowledged' && escalated) newStatus = 'open';
+      else if (cur.status === 'suppressed' && !event.inDowntime && !rootCause) newStatus = 'open';
+
+      const { rows } = await this.pg.query(
+        `UPDATE alerts SET severity = $2, message = $3, flapping = $4, status = $5,
+                          suppressed_by = $6, occurrences = occurrences + 1, updated_at = now()
+         WHERE id = $1 RETURNING *`,
+        [cur.id, severity, message, event.flapping ?? false, newStatus, rootCause],
+      );
+      alert = rows[0];
+      await this.#publish(escalated && newStatus === 'open' ? 'escalated' : 'updated', alert);
+    } else {
+      // Flap damping: reuse a very-recently-resolved row instead of a new one.
+      const recent = await this.pg.query(
+        `SELECT id FROM alerts
+         WHERE tenant_id = $1 AND device_name = $2 AND check_name = $3 AND status = 'resolved'
+           AND resolved_at > now() - ($4::int * INTERVAL '1 millisecond')
+         ORDER BY resolved_at DESC LIMIT 1`,
+        [tenantId, event.host, checkName, FLAP_REOPEN_WINDOW_MS],
+      );
+
+      if (recent.rows.length) {
+        const { rows } = await this.pg.query(
+          `UPDATE alerts SET severity = $2, message = $3, flapping = true, status = $4,
+                            suppressed_by = $5, occurrences = occurrences + 1,
+                            resolved_at = NULL, updated_at = now()
+           WHERE id = $1 RETURNING *`,
+          [recent.rows[0].id, severity, message, status, rootCause],
+        );
+        alert = rows[0];
+        await this.#publish('raised', alert);
+      } else {
+        const { rows } = await this.pg.query(
+          `INSERT INTO alerts (tenant_id, device_id, device_name, check_name,
+                               severity, status, message, flapping, suppressed_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+          [tenantId, device?.id ?? null, event.host, checkName,
+           severity, status, message, event.flapping ?? false, rootCause],
+        );
+        alert = rows[0];
+        await this.#publish('raised', alert);
+      }
+    }
+
+    // If THIS is a newly-open critical host alert, retro-suppress any children
+    // that alerted before their parent failed (closes the ordering race).
+    if (isHost && severity === 'critical' && alert.status === 'open' && device) {
+      await this.#suppressDescendants(device.id, alert.id);
+    }
   }
 
   async #resolve(event) {
@@ -113,35 +168,52 @@ export class CorrelationEngine {
   }
 
   /**
-   * Walk up the parent chain looking for an open critical *host* alert.
-   * Returns the id of the closest ancestor alert, or null. Depth-capped to
-   * survive accidental cycles in the inventory.
+   * Closest ancestor with an open critical *host* alert, via a single
+   * recursive CTE (replaces the per-hop query loop).
    */
   async #findRootCause(device) {
-    let parentId = device.parent_id;
-    for (let depth = 0; parentId && depth < 16; depth++) {
-      const { rows } = await this.pg.query(
-        `SELECT d.id, d.parent_id, d.name,
-                a.id AS alert_id
-         FROM devices d
-         LEFT JOIN alerts a
-           ON a.device_id = d.id AND a.check_name = ''
-          AND a.severity = 'critical' AND a.status IN ('open', 'acknowledged')
-         WHERE d.id = $1`,
-        [parentId],
-      );
-      if (rows.length === 0) return null;
-      if (rows[0].alert_id) return rows[0].alert_id;
-      parentId = rows[0].parent_id;
-    }
-    return null;
+    const { rows } = await this.pg.query(
+      `WITH RECURSIVE ancestors AS (
+         SELECT id, parent_id, 0 AS depth FROM devices WHERE id = $1
+         UNION ALL
+         SELECT d.id, d.parent_id, a.depth + 1
+         FROM devices d JOIN ancestors a ON d.id = a.parent_id
+         WHERE a.depth < 16
+       )
+       SELECT al.id AS alert_id
+       FROM ancestors an
+       JOIN alerts al ON al.device_id = an.id AND al.check_name = ''
+        AND al.severity = 'critical' AND al.status IN ('open', 'acknowledged')
+       WHERE an.depth > 0
+       ORDER BY an.depth ASC
+       LIMIT 1`,
+      [device.id],
+    );
+    return rows[0]?.alert_id ?? null;
+  }
+
+  /** Suppress open alerts on all descendant devices under a failed parent. */
+  async #suppressDescendants(deviceId, rootAlertId) {
+    const { rows } = await this.pg.query(
+      `WITH RECURSIVE descendants AS (
+         SELECT id FROM devices WHERE id = $1
+         UNION ALL
+         SELECT d.id FROM devices d JOIN descendants ds ON d.parent_id = ds.id
+       )
+       UPDATE alerts SET status = 'suppressed', suppressed_by = $2, updated_at = now()
+       WHERE device_id IN (SELECT id FROM descendants WHERE id <> $1)
+         AND status = 'open'
+       RETURNING *`,
+      [deviceId, rootAlertId],
+    );
+    for (const alert of rows) await this.#publish('suppressed', alert);
   }
 
   /** When a root cause clears, surface whatever it was masking. */
   async #unsuppressChildren(alertId) {
     const { rows } = await this.pg.query(
       `UPDATE alerts
-       SET status = 'open', suppressed_by = NULL
+       SET status = 'open', suppressed_by = NULL, updated_at = now()
        WHERE suppressed_by = $1 AND status = 'suppressed'
        RETURNING *`,
       [alertId],
@@ -160,7 +232,7 @@ export class CorrelationEngine {
   async #defaultTenant() {
     if (!this._defaultTenantId) {
       const { rows } = await this.pg.query(
-        "SELECT id FROM tenants ORDER BY created_at LIMIT 1");
+        'SELECT id FROM tenants ORDER BY created_at LIMIT 1');
       this._defaultTenantId = rows[0]?.id;
     }
     return this._defaultTenantId;

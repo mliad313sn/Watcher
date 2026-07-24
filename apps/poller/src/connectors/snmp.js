@@ -91,13 +91,22 @@ function walkColumn(session, baseOid) {
   });
 }
 
-function toNumber(value) {
-  // net-snmp returns Counter64 as Buffer.
+/** BigInt-exact reading, preserving full Counter64 precision (net-snmp
+ *  returns Counter64 as a Buffer). Use for counters fed to the rate engine. */
+function toBigInt(value) {
+  if (typeof value === 'bigint') return value;
   if (Buffer.isBuffer(value)) {
     let n = 0n;
     for (const byte of value) n = (n << 8n) | BigInt(byte);
-    return Number(n);
+    return n;
   }
+  return BigInt(Math.trunc(Number(value)));
+}
+
+/** Lossy Number reading — fine for gauges (utilization %, load, speed) that
+ *  never approach 2^53. */
+function toNumber(value) {
+  if (Buffer.isBuffer(value)) return Number(toBigInt(value));
   return Number(value);
 }
 
@@ -189,7 +198,8 @@ export class SnmpConnector {
       ];
       for (const [metric, raw, scale, is64] of counters) {
         if (raw === undefined) continue;
-        const rate = await this.rates.rate(device.id, metric, ifName, toNumber(raw), { is64 });
+        // BigInt-exact counter value → rate engine (issue M1).
+        const rate = await this.rates.rate(device.id, metric, ifName, toBigInt(raw), { is64 });
         if (rate !== null) {
           this.writer.push({ deviceId: device.id, metric, instance: ifName, value: rate * scale });
         }

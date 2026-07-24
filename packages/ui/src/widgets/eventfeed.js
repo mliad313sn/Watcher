@@ -5,6 +5,8 @@
  * newest `max` entries (default 100).
  * event: { severity|chipClass, title, detail, ts }
  */
+import { escapeHtml as esc } from '../escape.js';
+
 const EDGE = {
   ok: 'var(--accent)', up: 'var(--accent)', info: 'var(--info)',
   warning: 'var(--warning)', unreachable: 'var(--warning)',
@@ -52,10 +54,6 @@ export class WEventfeed extends HTMLElement {
         }).join('')}
       </div>`;
   }
-}
-
-function esc(s) {
-  return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function timeStamp(ts) {
