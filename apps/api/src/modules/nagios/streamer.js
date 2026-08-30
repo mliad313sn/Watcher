@@ -96,8 +96,13 @@ export class NagiosStreamer {
       try {
         fileStat = await stat(this.opts.statusFile);
       } catch {
-        // The status file is gone entirely — the engine is definitively blind.
-        await this.#setStale(true, 'status.dat is not readable — Nagios engine down?');
+        // Only "stale" if the engine was previously alive and then went away.
+        // A status file that has NEVER appeared (fresh install, Nagios not yet
+        // wired, or a demo environment) is "not attached", not a fault — raising
+        // a critical there is a false positive.
+        if (this.lastMtimeMs > 0) {
+          await this.#setStale(true, 'status.dat is not readable — Nagios engine down?');
+        }
         return;
       }
 

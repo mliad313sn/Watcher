@@ -17,6 +17,13 @@
         <span class="material-symbols-outlined">refresh</span>Auto-refresh: 30s
       </button>
     </div>
+    <!-- Guided first-run: shown only when the operations centre is empty -->
+    <div id="firstrun" hidden></div>
+
+    <!-- Demo banner: shown only when a demo environment is loaded -->
+    <div id="demobanner" hidden></div>
+
+    <div id="live">
     <div class="tiles" id="tiles" style="margin-bottom:8px"></div>
 
     <div class="dash-grid" id="grid" style="margin-bottom:16px">
@@ -36,6 +43,7 @@
         <div class="w-title">Active problems</div>
         <div class="w-body"><w-statusgrid id="problems"></w-statusgrid></div>
       </div>
+    </div>
     </div>
   </w-shell>
   <script type="module" src="/src/pages/dashboard.js"></script>

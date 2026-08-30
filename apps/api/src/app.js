@@ -18,6 +18,7 @@ import metricsRoutes from './modules/metrics/routes.js';
 import deviceRoutes from './modules/devices/routes.js';
 import dashboardRoutes from './modules/dashboards/routes.js';
 import discoveryRoutes from './modules/discovery/routes.js';
+import demoRoutes from './modules/demo/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -81,6 +82,7 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(deviceRoutes, { prefix: '/api/devices' });
   await fastify.register(dashboardRoutes, { prefix: '/api/dashboards' });
   await fastify.register(discoveryRoutes, { prefix: '/api/discovery' });
+  await fastify.register(demoRoutes, { prefix: '/api/demo' });
 
   if (withBackgroundJobs) {
     const streamer = new NagiosStreamer(
