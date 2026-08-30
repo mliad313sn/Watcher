@@ -2,6 +2,54 @@ const form = document.getElementById('login');
 const errorEl = document.getElementById('error');
 let phase = 'login'; // 'login' | 'change'
 
+// ── SSO return path: the OIDC callback lands here with the session token in
+// the URL fragment (never the query string, so it stays out of server logs).
+(function handleSsoFragment() {
+  const frag = new URLSearchParams(location.hash.slice(1));
+  const token = frag.get('sso_token');
+  const ssoError = frag.get('sso_error');
+  if (ssoError) {
+    errorEl.textContent = ssoError;
+    history.replaceState(null, '', location.pathname);
+    return;
+  }
+  if (!token) return;
+  history.replaceState(null, '', location.pathname); // scrub the token from the URL
+  try {
+    const claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    localStorage.setItem('watcher.token', token);
+    localStorage.setItem('watcher.user', JSON.stringify({
+      id: claims.sub, username: claims.username, displayName: claims.username,
+      role: claims.role, tenant: claims.tenant,
+    }));
+    location.href = '/index.html';
+  } catch {
+    errorEl.textContent = 'Sign-in failed — invalid session token.';
+  }
+})();
+
+// ── Offer the SSO button when the server has an IdP configured.
+(async function offerSso() {
+  try {
+    const res = await fetch('/api/auth/sso/config');
+    if (!res.ok) return;
+    const { oidc } = await res.json();
+    if (!oidc) return;
+    const btn = document.createElement('a');
+    btn.href = '/api/auth/sso/login';
+    btn.className = 'btn';
+    btn.style.cssText = 'width:100%;justify-content:center;margin-top:10px;text-decoration:none';
+    btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:17px" aria-hidden="true">shield</span>`
+      + `Continue with ${oidc.label.replace(/[<>&]/g, '')}`;
+    form.after(btn);
+    const or = document.createElement('div');
+    or.className = 'dim';
+    or.style.cssText = 'text-align:center;font-size:11px;margin-top:10px;letter-spacing:.08em';
+    or.textContent = '— OR —';
+    form.after(or);
+  } catch { /* no SSO — password form stands alone */ }
+})();
+
 form.addEventListener('submit', async (e) => {
   if (phase !== 'login') return; // change-password has its own handler
   e.preventDefault();

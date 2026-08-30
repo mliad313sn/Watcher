@@ -201,6 +201,128 @@ document.getElementById('rb-form').addEventListener('submit', async (e) => {
 
 await loadRunbooks();
 
+// ── API tokens ──────────────────────────────────────────────────────────────
+const tokList = document.getElementById('tok-list');
+
+async function loadTokens() {
+  let tokens = [];
+  try { ({ tokens } = await api('/auth/tokens')); } catch { tokList.innerHTML = ''; return; }
+  if (tokens.length === 0) {
+    tokList.innerHTML = '<div class="dim" style="font-size:13px">No tokens yet.</div>';
+    return;
+  }
+  tokList.innerHTML = tokens.map((t) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
+         border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+      <div>
+        <strong class="mono">${esc(t.name)}</strong>
+        <span class="chip ${t.role === 'admin' ? 'critical' : t.role === 'operator' ? 'warning' : 'unknown'}" style="margin-left:8px">${t.role}</span>
+        <div class="dim mono" style="font-size:11px;margin-top:3px">
+          ${t.last_used_at ? 'last used ' + new Date(t.last_used_at).toLocaleString() : 'never used'}
+          · ${t.expires_at ? 'expires ' + new Date(t.expires_at).toLocaleDateString() : 'no expiry'}</div>
+      </div>
+      <button class="btn danger" data-del-tok="${esc(t.id)}" style="font-size:11px;padding:3px 10px">Revoke</button>
+    </div>`).join('');
+  tokList.querySelectorAll('[data-del-tok]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Revoke this token? Anything using it stops working immediately.')) return;
+    try { await api(`/auth/tokens/${b.dataset.delTok}`, { method: 'DELETE' }); toast('Token revoked', { type: 'success' }); }
+    catch (err) { toast(`Could not revoke: ${err.message}`, { type: 'error' }); }
+    loadTokens();
+  }));
+}
+
+document.getElementById('tok-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('tok-msg');
+  const secretEl = document.getElementById('tok-secret');
+  const exp = document.getElementById('tok-exp').value;
+  try {
+    const { secret } = await api('/auth/tokens', {
+      method: 'POST',
+      body: {
+        name: document.getElementById('tok-name').value,
+        role: document.getElementById('tok-role').value,
+        ...(exp ? { expiresInDays: Number(exp) } : {}),
+      },
+    });
+    msg.style.color = 'var(--ok)';
+    msg.textContent = 'Token created — copy the secret now, it will not be shown again:';
+    secretEl.hidden = false;
+    secretEl.textContent = secret;
+    e.target.reset();
+    loadTokens();
+  } catch (err) {
+    msg.style.color = 'var(--critical)';
+    msg.textContent = err.message;
+  }
+});
+
+await loadTokens();
+
+// ── Maintenance windows ─────────────────────────────────────────────────────
+const mwList = document.getElementById('mw-list');
+
+async function loadWindows() {
+  let windows = [];
+  try { ({ windows } = await api('/maintenance')); } catch { return; }
+  if (windows.length === 0) {
+    mwList.innerHTML = '<div class="dim" style="font-size:13px">Nothing scheduled.</div>';
+    return;
+  }
+  mwList.innerHTML = windows.map((w) => {
+    const scope = [w.match?.kind && `kind=${w.match.kind}`, w.match?.devicePattern && `name~/${w.match.devicePattern}/`]
+      .filter(Boolean).join(' · ') || 'all devices';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
+         border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;margin-bottom:8px">
+      <div>
+        ${w.active ? '<span class="chip info" style="margin-right:8px">ACTIVE NOW</span>' : ''}
+        <strong>${esc(w.name)}</strong>
+        <span class="dim mono" style="font-size:11px;margin-left:8px">${esc(scope)}</span>
+        <div class="dim mono" style="font-size:11px;margin-top:3px">
+          ${new Date(w.starts_at).toLocaleString()} → ${new Date(w.ends_at).toLocaleString()}</div>
+      </div>
+      <button class="btn danger" data-del-mw="${esc(w.id)}" style="font-size:11px;padding:3px 10px">Cancel</button>
+    </div>`;
+  }).join('');
+  mwList.querySelectorAll('[data-del-mw]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Cancel this maintenance window?')) return;
+    try { await api(`/maintenance/${b.dataset.delMw}`, { method: 'DELETE' }); toast('Window cancelled', { type: 'success' }); }
+    catch (err) { toast(`Could not cancel: ${err.message}`, { type: 'error' }); }
+    loadWindows();
+  }));
+}
+
+document.getElementById('mw-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('mw-msg');
+  const match = {};
+  const kind = document.getElementById('mw-kind').value;
+  const pattern = document.getElementById('mw-pattern').value.trim();
+  if (kind) match.kind = kind;
+  if (pattern) match.devicePattern = pattern;
+  try {
+    await api('/maintenance', {
+      method: 'POST',
+      body: {
+        name: document.getElementById('mw-name').value,
+        startsAt: new Date(document.getElementById('mw-start').value).toISOString(),
+        endsAt: new Date(document.getElementById('mw-end').value).toISOString(),
+        match,
+      },
+    });
+    msg.style.color = 'var(--ok)';
+    msg.textContent = 'Maintenance scheduled.';
+    e.target.reset();
+    loadWindows();
+  } catch (err) {
+    msg.style.color = 'var(--critical)';
+    msg.textContent = err.message;
+  }
+});
+
+await loadWindows();
+
 // ── Public status components ────────────────────────────────────────────────
 const scList = document.getElementById('sc-list');
 

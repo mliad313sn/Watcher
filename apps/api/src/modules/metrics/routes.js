@@ -177,4 +177,85 @@ export default async function metricsRoutes(fastify) {
       transitions: rows,
     };
   });
+
+  /**
+   * Fleet-wide SLA: host availability for every device in the tenant over the
+   * window, one pass over state_changes. `format=csv` streams a download for
+   * the monthly-report ritual (parity with Nagios XI Enterprise / OpManager).
+   */
+  fastify.get('/sla', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          days: { type: 'integer', minimum: 1, maximum: 365, default: 30 },
+          format: { type: 'string', enum: ['json', 'csv'], default: 'json' },
+        },
+      },
+    },
+    preHandler: fastify.requireRole('viewer'),
+  }, async (request, reply) => {
+    const { days, format } = request.query;
+    const now = Date.now();
+    const windowStart = now - days * 86400e3;
+    const windowStartIso = new Date(windowStart).toISOString();
+    const tenantId = request.user.tenantId;
+
+    const { rows: devices } = await fastify.pg.query(
+      'SELECT name, kind FROM devices WHERE tenant_id = $1 ORDER BY name', [tenantId]);
+    if (devices.length === 0) return { days, rows: [] };
+    const names = devices.map((d) => d.name);
+
+    // One query for all in-window host transitions, one for each device's
+    // opening state — instead of 2N round-trips.
+    const [inWindow, priors] = await Promise.all([
+      fastify.tsdb.query(
+        `SELECT device_name, time, from_state, to_state
+         FROM state_changes
+         WHERE device_name = ANY($1) AND check_name = '' AND time >= $2
+         ORDER BY device_name, time ASC`,
+        [names, windowStartIso]),
+      fastify.tsdb.query(
+        `SELECT DISTINCT ON (device_name) device_name, to_state
+         FROM state_changes
+         WHERE device_name = ANY($1) AND check_name = '' AND time < $2
+         ORDER BY device_name, time DESC`,
+        [names, windowStartIso]),
+    ]);
+
+    const byDevice = new Map(names.map((n) => [n, []]));
+    for (const r of inWindow.rows) byDevice.get(r.device_name)?.push(r);
+    const priorBad = new Map(priors.rows.map((r) => [r.device_name, r.to_state !== 0]));
+
+    const totalMs = now - windowStart;
+    const report = devices.map((d) => {
+      const transitions = byDevice.get(d.name) ?? [];
+      const initialBad = priorBad.has(d.name)
+        ? priorBad.get(d.name)
+        : (transitions.length ? transitions[0].from_state !== 0 : false);
+      const downMs = integrateDowntime({
+        transitions, initialBad, windowStartMs: windowStart, nowMs: now,
+      });
+      return {
+        device: d.name,
+        kind: d.kind,
+        availabilityPct: Number((100 * (1 - downMs / totalMs)).toFixed(4)),
+        downtimeSeconds: Math.round(downMs / 1000),
+        outages: transitions.filter((t) => t.to_state !== 0).length,
+      };
+    }).sort((a, b) => a.availabilityPct - b.availabilityPct); // worst first
+
+    if (format === 'csv') {
+      const headRow = 'device,kind,availability_pct,downtime_seconds,outages';
+      const lines = report.map((r) =>
+        // Device names come from operators; quote so a comma can't shift columns.
+        `"${r.device.replaceAll('"', '""')}",${r.kind},${r.availabilityPct},${r.downtimeSeconds},${r.outages}`);
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition',
+          `attachment; filename="watcher-sla-${days}d-${new Date().toISOString().slice(0, 10)}.csv"`)
+        .send([headRow, ...lines].join('\n') + '\n');
+    }
+    return { days, rows: report };
+  });
 }

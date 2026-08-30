@@ -20,6 +20,7 @@
 import { REDIS_KEYS, SEVERITY_WEIGHT } from '@watcher/shared';
 import { currentOnCall } from '../oncall/store.js';
 import { runbookForAlert } from '../runbooks/store.js';
+import { activeWindowFor } from '../maintenance/routes.js';
 
 export class NotifierEngine {
   /**
@@ -48,7 +49,10 @@ export class NotifierEngine {
     await this.redisSub.subscribe(REDIS_KEYS.eventsAlerts);
     this.handler = (channel, message) => {
       if (channel !== REDIS_KEYS.eventsAlerts) return;
-      this.#handle(JSON.parse(message)).catch((err) => this.log.error({ err }, 'notify failed'));
+      let event;
+      try { event = JSON.parse(message); }
+      catch { this.log.warn('dropped malformed alert event on bus'); return; }
+      this.#handle(event).catch((err) => this.log.error({ err }, 'notify failed'));
     };
     this.redisSub.on('message', this.handler);
 
@@ -142,6 +146,26 @@ export class NotifierEngine {
   async #dispatchAll(alert, kind) {
     const rules = await this.#rulesFor(alert.tenant_id);
     const device = alert.device_id ? await this.#device(alert.device_id) : null;
+
+    // Planned maintenance: the alert still exists and records (history stays
+    // honest) but nobody gets paged for work they scheduled themselves.
+    // Recovery notices still go out so a window never eats an all-clear.
+    if (kind !== 'recovery') {
+      try {
+        const win = await activeWindowFor(this.pg, alert, device ?? { name: alert.device_name });
+        if (win) {
+          this.log.info({ alert: alert.id, window: win.name },
+            'notification suppressed: device under maintenance');
+          await this.pg.query(
+            `INSERT INTO notification_log (alert_id, rule_id, channel, target, status, error)
+             VALUES ($1, NULL, 'maintenance', $2, 'suppressed', NULL)`,
+            [alert.id, win.name]).catch(() => {});
+          return;
+        }
+      } catch (err) {
+        this.log.warn({ err }, 'maintenance-window check failed — paging anyway (fail open)');
+      }
+    }
 
     const matched = rules.filter((r) => this.#matches(r, alert, device));
     const targets = matched.flatMap((r) => (Array.isArray(r.actions) ? r.actions : []).map((a) => ({ rule: r, action: a })));
@@ -325,7 +349,7 @@ export class NotifierEngine {
   }
 
   async #device(id) {
-    const { rows } = await this.pg.query('SELECT kind, tags FROM devices WHERE id = $1', [id]);
+    const { rows } = await this.pg.query('SELECT name, kind, tags FROM devices WHERE id = $1', [id]);
     return rows[0] ?? null;
   }
 }

@@ -54,6 +54,30 @@ export const config = {
       ? Number(process.env.NAGIOS_STALE_THRESHOLD_MS) : undefined,
   },
 
+  sso: {
+    oidc: {
+      issuer: env('SSO_OIDC_ISSUER', ''),
+      clientId: env('SSO_OIDC_CLIENT_ID', ''),
+      clientSecret: env('SSO_OIDC_CLIENT_SECRET', ''),
+      scope: env('SSO_OIDC_SCOPE', 'openid profile email'),
+      groupClaim: env('SSO_OIDC_GROUP_CLAIM', 'groups'),
+      // "idp-group=role,…"; '*' maps everyone authenticated. Empty + no '*'
+      // means deny users with no mapped group (deny-by-default).
+      roleMap: env('SSO_ROLE_MAP', '*=viewer'),
+      // Display label on the login button, e.g. "Keycloak", "Okta".
+      label: env('SSO_OIDC_LABEL', 'Single sign-on'),
+    },
+    ldap: {
+      url: env('SSO_LDAP_URL', ''),                       // ldaps://dc01:636
+      bindDn: env('SSO_LDAP_BIND_DN', ''),                // service account ('' = anonymous)
+      bindPassword: env('SSO_LDAP_BIND_PASSWORD', ''),
+      searchBase: env('SSO_LDAP_SEARCH_BASE', ''),
+      userFilter: env('SSO_LDAP_USER_FILTER', '(uid={username})'),
+      usernameAttr: env('SSO_LDAP_USERNAME_ATTR', 'uid'),
+      roleMap: env('SSO_ROLE_MAP', '*=viewer'),
+    },
+  },
+
   notify: {
     // One page per incident per cooldown (seconds); escalations bypass it.
     cooldownS: Number(env('NOTIFY_COOLDOWN_S', 300)),

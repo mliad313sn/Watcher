@@ -119,6 +119,84 @@
     </div>
 
     <div class="card" style="margin-top:16px">
+      <h2 style="margin-bottom:2px">API tokens</h2>
+      <div class="dim" style="font-size:13px">Scoped, revocable credentials for automation — CI, scripts,
+        integrations. Send as <code class="mono">X-API-Token</code>. The secret is shown once at creation.</div>
+      <div id="tok-list" style="margin:16px 0"></div>
+      <details style="border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-dim)">＋ New token</summary>
+        <form id="tok-form" style="margin-top:12px;max-width:560px">
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="tok-name">Name</label>
+              <input id="tok-name" placeholder="ci-deploy-bot" required />
+            </div>
+            <div>
+              <label for="tok-role">Role</label>
+              <select id="tok-role" style="width:130px">
+                <option value="viewer" selected>Viewer</option>
+                <option value="operator">Operator</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label for="tok-exp">Expires</label>
+              <select id="tok-exp" style="width:130px">
+                <option value="30">30 days</option>
+                <option value="90" selected>90 days</option>
+                <option value="365">1 year</option>
+                <option value="">Never</option>
+              </select>
+            </div>
+          </div>
+          <div id="tok-msg" style="min-height:18px;font-size:12px;margin-top:8px"></div>
+          <div id="tok-secret" hidden style="background:var(--bg-deep);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:10px 14px;margin:8px 0;font-family:var(--mono);font-size:12px;word-break:break-all"></div>
+          <button class="btn primary">Create token</button>
+        </form>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2 style="margin-bottom:2px">Maintenance windows</h2>
+      <div class="dim" style="font-size:13px">Planned work doesn't page anyone — matching alert notifications
+        are suppressed while a window is active, and the public status page shows a maintenance notice.</div>
+      <div id="mw-list" style="margin:16px 0"></div>
+      <details style="border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-dim)">＋ Schedule maintenance</summary>
+        <form id="mw-form" style="margin-top:12px;max-width:640px">
+          <label for="mw-name">What's happening</label>
+          <input id="mw-name" placeholder="Core switch firmware upgrade" required />
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="mw-start">Starts</label>
+              <input id="mw-start" type="datetime-local" required />
+            </div>
+            <div class="grow">
+              <label for="mw-end">Ends</label>
+              <input id="mw-end" type="datetime-local" required />
+            </div>
+          </div>
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="mw-kind">Limit to device kind</label>
+              <select id="mw-kind">
+                <option value="">All devices</option>
+                <option>server</option><option>switch</option><option>router</option>
+                <option>firewall</option><option>storage</option><option>wireless_ap</option><option>pbx</option>
+              </select>
+            </div>
+            <div class="grow">
+              <label for="mw-pattern">Device name matches (regex, optional)</label>
+              <input id="mw-pattern" placeholder="^core-sw-" style="font-family:var(--mono);font-size:13px" />
+            </div>
+          </div>
+          <div id="mw-msg" style="min-height:18px;font-size:12px;margin-top:8px"></div>
+          <button class="btn primary">Schedule window</button>
+        </form>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:16px">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
         <div>
           <h2 style="margin-bottom:2px">Public status page</h2>

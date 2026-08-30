@@ -1,12 +1,18 @@
 /**
- * Auth plugin: JWT verification + role-based access control.
+ * Auth plugin: JWT verification + role-based access control + API tokens.
  *
  * Usage on a route:
  *   preHandler: fastify.requireRole('operator')
  *
  * Roles are ordered: admin > operator > viewer. A route guarded with
  * 'operator' accepts operators and admins.
+ *
+ * Two credentials are accepted:
+ *   - Authorization: Bearer <jwt>      — interactive sessions
+ *   - X-API-Token: <secret>            — automation (scoped, revocable,
+ *     stored only as a SHA-256 hash; see api_tokens)
  */
+import crypto from 'node:crypto';
 import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 
@@ -18,10 +24,46 @@ export default fp(async function authPlugin(fastify, opts) {
     sign: { expiresIn: opts.ttl },
   });
 
-  fastify.decorate('authenticate', async function authenticate(request, reply) {
+  /** Resolve an X-API-Token header into a synthetic request.user, or null. */
+  async function apiTokenUser(request) {
+    const secret = request.headers['x-api-token'];
+    if (!secret || typeof secret !== 'string') return null;
+    const hash = crypto.createHash('sha256').update(secret).digest('hex');
+    const { rows } = await fastify.pg.query(
+      `SELECT t.id, t.name, t.role, t.tenant_id, tn.name AS tenant_name
+       FROM api_tokens t JOIN tenants tn ON tn.id = t.tenant_id
+       WHERE t.token_hash = $1 AND (t.expires_at IS NULL OR t.expires_at > now())`,
+      [hash]);
+    const token = rows[0];
+    if (!token) return null;
+    // Best-effort usage stamp, throttled by only writing when stale >60s.
+    fastify.pg.query(
+      `UPDATE api_tokens SET last_used_at = now()
+       WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '60 seconds')`,
+      [token.id]).catch(() => {});
+    return {
+      sub: token.id,
+      username: `token:${token.name}`,
+      role: token.role,
+      tenantId: token.tenant_id,
+      tenant: token.tenant_name,
+      isToken: true,
+    };
+  }
+
+  async function resolveIdentity(request) {
     try {
       await request.jwtVerify();
+      return true;
     } catch {
+      const tokenUser = await apiTokenUser(request);
+      if (tokenUser) { request.user = tokenUser; return true; }
+      return false;
+    }
+  }
+
+  fastify.decorate('authenticate', async function authenticate(request, reply) {
+    if (!(await resolveIdentity(request))) {
       reply.code(401).send({ error: 'unauthorized' });
     }
   });
@@ -29,9 +71,7 @@ export default fp(async function authPlugin(fastify, opts) {
   fastify.decorate('requireRole', function requireRole(minRole) {
     const need = ROLE_WEIGHT[minRole] ?? Infinity;
     return async function roleGuard(request, reply) {
-      try {
-        await request.jwtVerify();
-      } catch {
+      if (!(await resolveIdentity(request))) {
         return reply.code(401).send({ error: 'unauthorized' });
       }
       const have = ROLE_WEIGHT[request.user?.role] ?? 0;
@@ -40,4 +80,4 @@ export default fp(async function authPlugin(fastify, opts) {
       }
     };
   });
-}, { name: 'watcher-auth' });
+}, { name: 'watcher-auth', dependencies: ['watcher-db'] });

@@ -43,7 +43,10 @@ export class CorrelationEngine {
     await this.redisSub.subscribe(REDIS_KEYS.eventsState);
     this.handler = (channel, message) => {
       if (channel !== REDIS_KEYS.eventsState) return;
-      this.processEvent(JSON.parse(message))
+      let event;
+      try { event = JSON.parse(message); }
+      catch { this.log.warn('dropped malformed state event on bus'); return; }
+      this.processEvent(event)
         .catch((err) => this.log.error({ err }, 'alert correlation failed'));
     };
     this.redisSub.on('message', this.handler);

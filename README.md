@@ -4,6 +4,16 @@ Enterprise-grade network & systems monitoring platform. Nagios Core provides the
 battle-tested check engine; Watcher wraps it in a modern, high-throughput
 middleware layer and a fast, ergonomic multi-page dashboard UI.
 
+**The incident stack is in the box** — dependency root-cause correlation,
+on-call rotations with acknowledgement-SLA escalation, runbooks attached to
+alerts, one-tap mobile acknowledge (no app), maintenance windows, a public
+status page, SLA reports with CSV export, and native Slack / Microsoft Teams /
+PagerDuty / webhook notification channels. Enterprise access: OIDC + LDAP SSO
+with group→role mapping, scoped API tokens, multi-tenancy. Config-as-code:
+export the whole monitoring configuration as one JSON bundle and import it
+idempotently on any install. Fully self-hosted and air-gap friendly (vendored
+fonts, no CDN, no phone-home).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │

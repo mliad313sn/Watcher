@@ -15,6 +15,29 @@
         <div class="sub">Availability &amp; SLA figures from the hard state-change log in TimescaleDB</div>
       </div>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <h2 style="margin-bottom:2px">Fleet SLA</h2>
+          <div class="dim" style="font-size:13px">Host availability for every device, worst first.</div>
+        </div>
+        <div class="row" style="gap:10px">
+          <select id="sla-days" style="width:120px" aria-label="SLA window">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <button class="btn" id="sla-csv" aria-label="Download the fleet SLA report as CSV">
+            <span class="material-symbols-outlined" style="font-size:16px" aria-hidden="true">monitoring</span>Export CSV</button>
+        </div>
+      </div>
+      <table class="data" style="margin-top:14px">
+        <thead><tr><th>Device</th><th>Kind</th><th class="num">Availability</th>
+            <th class="num">Downtime</th><th class="num">Outages</th></tr></thead>
+        <tbody id="sla-rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
     <div class="card" style="max-width:640px;margin-bottom:16px">
       <div class="row">
         <div class="grow">

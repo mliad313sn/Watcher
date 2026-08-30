@@ -159,7 +159,7 @@
     <div class="mast-meta">
       <span>Method: <b>desk research + live product verification</b></span>
       <span>Competitors assessed: <b>10</b></span>
-      <span>Gap-closers shipped this session: <b>7</b></span>
+      <span>Gap-closers shipped: <b>12</b> · Enterprise readiness: SSO ✓ tokens ✓ SLA ✓</span>
     </div>
   </div>
 </header>
@@ -241,7 +241,7 @@
             <td><span class="cell c-a">PER DEVICE</span></td><td><span class="cell c-a">PER NODE</span></td>
             <td><span class="cell c-n">FREE OSS</span></td></tr>
           <tr><td>SSO (SAML / OIDC / LDAP)</td>
-            <td class="watcher-col"><span class="cell c-x">GAP — next</span></td>
+            <td class="watcher-col"><span class="cell c-n">OIDC+LDAP</span></td>
             <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-n">NATIVE</span></td>
             <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-n">NATIVE</span></td>
             <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-a">PREMIUM</span></td>
@@ -319,12 +319,12 @@
         <div class="item"><span class="mark closed">CLOSED</span><div><b>Light theme, tour, bulk ops.</b>
           <span class="why">Daylight theme + onboarding tour + bulk ack + assignment + saved views — the
           demo-to-daily-use parity set.</span></div></div>
-        <div class="item"><span class="mark hole">P0</span><div><b>SSO — SAML / OIDC / LDAP.</b>
-          <span class="why">The single biggest deal-blocker left, and it gates the exact regulated buyers we
-          target. Committed next.</span></div></div>
-        <div class="item"><span class="mark hole">P1</span><div><b>SLA reports &amp; scheduled exports.</b>
-          <span class="why">Availability reporting exists; PDF/CSV scheduling to rival Nagios&nbsp;XI
-          Enterprise/OpManager does not yet.</span></div></div>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>SSO — OIDC + LDAP/AD.</b>
+          <span class="why">Shipped: OIDC code flow (Keycloak/Authentik/Okta/Entra) and LDAP bind auth, both
+          with group→role mapping and JIT provisioning. SAML stays on the list for the rare IdP without OIDC.</span></div></div>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>SLA reports, maintenance windows, API tokens, config-as-code.</b>
+          <span class="why">Shipped: fleet SLA with CSV export, maintenance windows that suppress pages,
+          scoped API tokens, and idempotent JSON config bundles.</span></div></div>
         <div class="item"><span class="mark hole">P1</span><div><b>Deeper auto-discovery &amp; agents.</b>
           <span class="why">CIDR discovery exists; L2/LLDP auto-topology and an OS metrics agent trail
           Zabbix/Checkmk/PRTG.</span></div></div>
@@ -378,20 +378,20 @@
         <span class="t">Daily-use parity: light theme, tour, bulk ack, assignment, saved views, palette actions</span>
         <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p0">P0</span><span class="eff">M</span>
-        <span class="t">SSO — SAML / OIDC / LDAP with group→role mapping <span class="why">— unblocks enterprise &amp; gov procurement</span></span>
-        <span class="st next">NEXT</span></div>
+        <span class="t">SSO — OIDC + LDAP/AD with group→role mapping <span class="why">— unblocks enterprise &amp; gov procurement</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p1">P1</span><span class="eff">M</span>
-        <span class="t">SLA / availability reports with scheduled PDF/CSV export <span class="why">— parity with Nagios XI Ent / OpManager</span></span>
-        <span class="st next">NEXT</span></div>
+        <span class="t">Fleet SLA / availability reports with CSV export <span class="why">— parity with Nagios XI Ent / OpManager</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p1">P1</span><span class="eff">S</span>
-        <span class="t">Maintenance-window UI <span class="why">— scheduled downtime suppressing alerts + status-page banner</span></span>
-        <span class="st next">NEXT</span></div>
+        <span class="t">Maintenance windows <span class="why">— scheduled work suppresses pages + status-page banner</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p1">P1</span><span class="eff">M</span>
-        <span class="t">Scoped API tokens + granular RBAC <span class="why">— automation &amp; MSP hardening</span></span>
-        <span class="st later">PLANNED</span></div>
+        <span class="t">Scoped API tokens (hashed, revocable, role-capped) <span class="why">— automation &amp; MSP hardening</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p2">P2</span><span class="eff">M</span>
-        <span class="t">Config-as-code: declarative devices/checks/rules in Git <span class="why">— modern buyer expectation</span></span>
-        <span class="st later">PLANNED</span></div>
+        <span class="t">Config-as-code: export/import the whole config as one JSON bundle <span class="why">— GitOps-ready, idempotent</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p2">P2</span><span class="eff">L</span>
         <span class="t">L2/LLDP auto-topology + lightweight OS agent <span class="why">— discovery parity with Zabbix/Checkmk</span></span>
         <span class="st later">PLANNED</span></div>

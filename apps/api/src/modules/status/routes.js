@@ -4,6 +4,7 @@
  *   GET/POST/DELETE /api/status/components — tenant-scoped management
  */
 import { REDIS_KEYS } from '@watcher/shared';
+import { publicMaintenanceNotice } from '../maintenance/routes.js';
 
 const RANK = { operational: 0, degraded: 1, major_outage: 2 };
 const worst = (a, b) => (RANK[a] >= RANK[b] ? a : b);
@@ -81,7 +82,19 @@ export default async function statusRoutes(fastify) {
     const { rows } = await fastify.pg.query('SELECT id FROM tenants WHERE name = $1', [tenantName]);
     if (rows.length === 0) return reply.code(404).send({ error: 'unknown status page' });
     reply.header('cache-control', 'public, max-age=15');
-    return { tenant: tenantName, ...(await buildStatus(fastify, rows[0].id)) };
+    const [status, maintenance] = await Promise.all([
+      buildStatus(fastify, rows[0].id),
+      publicMaintenanceNotice(fastify.pg, rows[0].id),
+    ]);
+    // Sanitized: only the window's name and times reach the public page.
+    return {
+      tenant: tenantName,
+      ...status,
+      maintenance: maintenance
+        ? { name: maintenance.name, startsAt: maintenance.starts_at,
+            endsAt: maintenance.ends_at, active: maintenance.active }
+        : null,
+    };
   });
 
   fastify.get('/components', { preHandler: fastify.requireRole('viewer') }, async (request) => {

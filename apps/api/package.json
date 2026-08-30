@@ -19,6 +19,7 @@
     "fastify": "^5.1.0",
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.1",
+    "ldapts": "^9.0.0",
     "pg": "^8.13.1"
   }
 }

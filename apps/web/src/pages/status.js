@@ -31,7 +31,21 @@ async function load() {
     return;
   }
 
+  const mw = data.maintenance;
+  const mwBanner = mw ? `
+    <div style="display:flex;gap:10px;align-items:center;justify-content:center;margin:0 0 14px;
+         padding:11px 18px;border:1px solid var(--accent);border-radius:var(--radius);
+         background:var(--accent-soft);font-size:13.5px">
+      <span class="material-symbols-outlined" style="color:var(--accent);font-size:18px" aria-hidden="true">science</span>
+      <span>${mw.active ? 'Planned maintenance in progress' : 'Planned maintenance scheduled'}:
+        <strong>${esc(mw.name)}</strong>
+        <span class="dim mono" style="font-size:12px;margin-left:6px">${mw.active
+          ? 'until ' + new Date(mw.endsAt).toLocaleString()
+          : new Date(mw.startsAt).toLocaleString() + ' → ' + new Date(mw.endsAt).toLocaleTimeString()}</span></span>
+    </div>` : '';
+
   board.innerHTML = `
+    ${mwBanner}
     <div class="overall ${data.overall}">
       <div class="big">${LABEL[data.overall] ?? 'Status'}</div>
     </div>

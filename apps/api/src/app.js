@@ -25,6 +25,8 @@ import demoRoutes from './modules/demo/routes.js';
 import oncallRoutes from './modules/oncall/routes.js';
 import runbookRoutes from './modules/runbooks/routes.js';
 import statusRoutes from './modules/status/routes.js';
+import maintenanceRoutes from './modules/maintenance/routes.js';
+import configRoutes from './modules/config/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -81,7 +83,9 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
     return reply.code(ready ? 200 : 503).send({ ready, checks });
   });
 
-  await fastify.register(authRoutes, { prefix: '/api/auth' });
+  await fastify.register(authRoutes, {
+    prefix: '/api/auth', sso: config.sso, publicBaseUrl: config.publicBaseUrl,
+  });
   await fastify.register(nagiosRoutes, { prefix: '/api/nagios', nagios: config.nagios });
   await fastify.register(alertRoutes, { prefix: '/api/alerts' });
   await fastify.register(metricsRoutes, { prefix: '/api/metrics' });
@@ -92,6 +96,8 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(oncallRoutes, { prefix: '/api/oncall' });
   await fastify.register(runbookRoutes, { prefix: '/api/runbooks' });
   await fastify.register(statusRoutes, { prefix: '/api/status' });
+  await fastify.register(maintenanceRoutes, { prefix: '/api/maintenance' });
+  await fastify.register(configRoutes, { prefix: '/api/config' });
 
   // Optionally serve the built web UI from the same origin as the API, so the
   // whole product is reachable as a single service (no dev proxy). API and

@@ -63,7 +63,10 @@ export default fp(async function wsHub(fastify) {
   fastify.redisSub.on('message', (redisChannel, message) => {
     const name = Object.keys(CHANNELS).find((k) => CHANNELS[k] === redisChannel);
     if (!name) return;
-    const data = JSON.parse(message);
+    // A malformed message on the bus must never take the API down.
+    let data;
+    try { data = JSON.parse(message); }
+    catch { fastify.log.warn({ redisChannel }, 'dropped malformed event on bus'); return; }
     const eventTenant = tenantOfEvent(name, data);
     const envelope = JSON.stringify({ channel: name, data });
     const nowS = Date.now() / 1000;
