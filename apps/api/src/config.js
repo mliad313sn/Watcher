@@ -10,6 +10,9 @@ export const config = {
   port: Number(env('API_PORT', 8080)),
   logLevel: env('LOG_LEVEL', 'info'),
   corsOrigins: env('CORS_ORIGINS', 'http://localhost:5173').split(','),
+  // Where the web UI is reachable — used to build one-tap mobile ack links
+  // in notifications.
+  publicBaseUrl: env('PUBLIC_BASE_URL', 'http://localhost:5173'),
 
   jwt: {
     secret: env('JWT_SECRET', 'dev-only-secret'),

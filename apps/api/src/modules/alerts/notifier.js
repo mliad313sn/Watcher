@@ -34,6 +34,10 @@ export class NotifierEngine {
     this.fallbackWebhook = opts.fallbackWebhook ?? '';
     this.fetch = opts.fetchImpl ?? fetch;
     this.sweepMs = opts.sweepMs ?? 30_000;
+    // One-tap mobile acknowledge: sign a per-alert capability token and put
+    // an ack link in every page, so the responder can ack from their phone.
+    this.ackBaseUrl = opts.ackBaseUrl ?? '';
+    this.signAckToken = opts.signAckToken ?? null;
     this.handler = null;
     this.sweepTimer = null;
     this._rulesCache = new Map(); // tenantId -> { rules, at }
@@ -163,6 +167,15 @@ export class NotifierEngine {
       ? `RESOLVED: ${alert.device_name}${alert.check_name ? ' / ' + alert.check_name : ''}`
       : `[${alert.severity.toUpperCase()}] ${alert.device_name}${alert.check_name ? ' / ' + alert.check_name : ''}`;
 
+    // A one-tap acknowledge link, valid only for this alert, on every page
+    // except recovery notices.
+    let ackUrl = null;
+    if (kind !== 'recovery' && this.signAckToken && this.ackBaseUrl) {
+      try {
+        ackUrl = `${this.ackBaseUrl}/ack.html?t=${this.signAckToken(alert.id, alert.tenant_id)}`;
+      } catch { /* signing unavailable — pages still go out, just without the link */ }
+    }
+
     let status = 'sent';
     let error = null;
     let channel = action.type;
@@ -178,11 +191,11 @@ export class NotifierEngine {
         } else {
           const contact = current.onCall.contact ?? { type: 'log' };
           target = `${current.onCall.name} · ${contact.type ?? 'log'}`;
-          const r = await this.#deliver(contact, title, alert);
+          const r = await this.#deliver(contact, title, alert, ackUrl);
           if (r) { status = r.status; error = r.error; }
         }
       } else {
-        const r = await this.#deliver(action, title, alert);
+        const r = await this.#deliver(action, title, alert, ackUrl);
         if (r) { status = r.status; error = r.error; }
       }
     } catch (err) {
@@ -200,21 +213,22 @@ export class NotifierEngine {
 
   /** Raw delivery for a concrete contact/action. Returns {status,error} for
    *  non-fatal outcomes, undefined when sent, throws on transport failure. */
-  async #deliver(action, title, alert) {
+  async #deliver(action, title, alert, ackUrl = null) {
+    const ackLine = ackUrl ? `\nAcknowledge: ${ackUrl}` : '';
     switch (action.type) {
       case 'webhook':
-        await this.#post(action.url, { title, alert });
+        await this.#post(action.url, { title, alert, ackUrl });
         return;
       case 'slack':
-        await this.#post(action.url, { text: `${title}\n${alert.message}` });
+        await this.#post(action.url, { text: `${title}\n${alert.message}${ackLine}` });
         return;
       case 'email':
         // No SMTP client is bundled; email goes via an external mail-gateway
         // webhook if configured, otherwise it's flagged for setup.
-        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: alert.message }); return; }
+        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: `${alert.message}${ackLine}` }); return; }
         return { status: 'skipped', error: 'email requires action.gatewayUrl (SMTP not bundled)' };
       case 'log':
-        this.log.warn({ alert: alert.id }, `NOTIFY ${title}: ${alert.message}`);
+        this.log.warn({ alert: alert.id, ackUrl }, `NOTIFY ${title}: ${alert.message}`);
         return;
       default:
         return { status: 'skipped', error: `unknown action type: ${action.type}` };

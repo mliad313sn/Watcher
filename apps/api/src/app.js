@@ -99,7 +99,13 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
     });
     const notifier = new NotifierEngine(
       { redis: fastify.redis, redisSub: fastify.redisSub, pg: fastify.pg, log: fastify.log },
-      config.notify,
+      {
+        ...config.notify,
+        ackBaseUrl: config.publicBaseUrl,
+        // Per-alert, single-purpose capability token for one-tap mobile ack.
+        signAckToken: (alertId, tenantId) =>
+          fastify.jwt.sign({ purpose: 'ack', alertId, tenantId }, { expiresIn: '24h' }),
+      },
     );
 
     fastify.addHook('onReady', async () => {

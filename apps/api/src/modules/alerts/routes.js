@@ -1,4 +1,5 @@
 /** Alert query & lifecycle routes. */
+import { REDIS_KEYS } from '@watcher/shared';
 
 export default async function alertRoutes(fastify) {
   fastify.get('/', {
@@ -135,5 +136,62 @@ export default async function alertRoutes(fastify) {
       [request.params.id, request.user.tenantId]);
     if (rowCount === 0) return reply.code(404).send({ error: 'not found' });
     return reply.code(204).send();
+  });
+
+  // ── One-tap mobile acknowledge (token-authed, no console login) ────────────
+  // The link is a per-alert capability token minted into each notification; it
+  // authorises acknowledging exactly that one alert and nothing else.
+  function verifyAckToken(token) {
+    const claims = fastify.jwt.verify(token ?? '');
+    if (claims.purpose !== 'ack' || !claims.alertId) throw new Error('not an ack token');
+    return claims;
+  }
+
+  fastify.get('/ack-info', {
+    schema: { querystring: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } } },
+  }, async (request, reply) => {
+    let claims;
+    try { claims = verifyAckToken(request.query.token); }
+    catch { return reply.code(401).send({ error: 'invalid or expired link' }); }
+    const { rows } = await fastify.pg.query(
+      `SELECT device_name, check_name, severity, status, message, opened_at
+       FROM alerts WHERE id = $1 AND tenant_id = $2`,
+      [claims.alertId, claims.tenantId]);
+    if (rows.length === 0) return reply.code(404).send({ error: 'alert not found' });
+    return { alert: rows[0] };
+  });
+
+  fastify.post('/ack-by-token', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['token'],
+        properties: { token: { type: 'string' }, comment: { type: 'string' } },
+      },
+    },
+  }, async (request, reply) => {
+    let claims;
+    try { claims = verifyAckToken(request.body.token); }
+    catch { return reply.code(401).send({ error: 'invalid or expired link' }); }
+
+    const { rows } = await fastify.pg.query(
+      `UPDATE alerts
+       SET status = 'acknowledged', ack_comment = COALESCE($3, 'acknowledged via mobile link')
+       WHERE id = $1 AND tenant_id = $2 AND status IN ('open', 'suppressed')
+       RETURNING *`,
+      [claims.alertId, claims.tenantId, request.body.comment ?? null]);
+
+    if (rows.length === 0) {
+      // Already acked/resolved — report the current state idempotently.
+      const cur = await fastify.pg.query(
+        'SELECT status FROM alerts WHERE id = $1 AND tenant_id = $2', [claims.alertId, claims.tenantId]);
+      if (cur.rows.length === 0) return reply.code(404).send({ error: 'alert not found' });
+      return { ok: true, alreadyHandled: true, status: cur.rows[0].status };
+    }
+
+    // Reflect the ack live (stops escalation, updates any open console).
+    await fastify.redis.publish(REDIS_KEYS.eventsAlerts,
+      JSON.stringify({ action: 'updated', alert: rows[0] })).catch(() => {});
+    return { ok: true, status: 'acknowledged', device: rows[0].device_name, check: rows[0].check_name };
   });
 }
