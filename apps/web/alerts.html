@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script>try{var t=localStorage.getItem('watcher.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
   <title>Alerts · Watcher</title>
   <link rel="stylesheet" href="/src/styles.css" />
 </head>
@@ -14,6 +15,9 @@
         <div class="sub">Correlated &amp; deduplicated — dependency-suppressed alerts are folded under their root cause</div>
       </div>
       <div class="row">
+        <select id="f-view" style="width:170px" aria-label="Saved views">
+          <option value="">Views…</option>
+        </select>
         <select id="f-status" style="width:150px">
           <option value="">Active (all)</option>
           <option value="open">Open</option>
@@ -27,14 +31,24 @@
           <option value="warning">Warning</option>
           <option value="info">Info</option>
         </select>
-        <input id="f-device" placeholder="Device…" style="width:180px" />
+        <input id="f-device" placeholder="Device…" style="width:160px" />
+        <button class="btn" id="save-view" title="Save the current filters as a view" aria-label="Save current filters as a view">
+          <span class="material-symbols-outlined" style="font-size:16px" aria-hidden="true">bookmark_add</span></button>
       </div>
+    </div>
+    <div id="bulkbar" class="row" hidden
+         style="gap:12px;align-items:center;background:var(--accent-soft);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 14px;margin-bottom:10px">
+      <strong id="bulk-count" style="font-size:13px">0 selected</strong>
+      <button class="btn primary" id="bulk-ack" style="font-size:12px;padding:5px 12px">
+        <span class="material-symbols-outlined" style="font-size:15px" aria-hidden="true">done_all</span>Acknowledge selected</button>
+      <button class="btn" id="bulk-clear" style="font-size:12px;padding:5px 12px">Clear</button>
     </div>
     <div class="card" style="padding:0">
       <table class="data">
         <thead>
-          <tr><th>Severity</th><th>Status</th><th>Device / Check</th><th>Message</th>
-              <th class="num">Count</th><th>Opened</th><th></th></tr>
+          <tr><th style="width:34px"><input type="checkbox" id="sel-all" aria-label="Select all open alerts" /></th>
+              <th>Severity</th><th>Status</th><th>Device / Check</th><th>Message</th>
+              <th>Assignee</th><th class="num">Count</th><th>Opened</th><th></th></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>

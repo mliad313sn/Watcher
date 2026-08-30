@@ -11,6 +11,8 @@
  * shared chrome.
  */
 import { escapeHtml } from './escape.js';
+import { toggleTheme } from './theme.js';
+import { toast } from './toast.js';
 
 const NAV = [
   { label: 'Global View — dashboard', href: '/index.html', icon: 'language', key: 'd' },
@@ -21,6 +23,42 @@ const NAV = [
   { label: 'Admin — settings', href: '/settings.html', icon: 'admin_panel_settings', key: 's' },
   { label: 'Public status page', href: '/status.html', icon: 'language' },
 ];
+
+/**
+ * Runnable actions — the palette does things, not just navigation. Each entry
+ * gets a `run()`; destructive ones confirm. Sorted below device matches so
+ * navigation stays the fast path.
+ */
+const ACTIONS = [
+  { label: 'Toggle light / dark theme', icon: 'light_mode', act: true,
+    run: () => { const t = toggleTheme(); toast(`Theme: ${t}`, { type: 'info', ms: 1800 }); } },
+  { label: 'Load demo environment', icon: 'science', act: true,
+    run: async () => {
+      try {
+        const r = await authedFetch('/api/demo/seed', { method: 'POST' });
+        toast(`Demo loaded: ${r.devices} devices`, { type: 'success' });
+        setTimeout(() => location.reload(), 600);
+      } catch (e) { toast(`Could not load demo: ${e.message}`, { type: 'error' }); }
+    } },
+  { label: 'Clear demo environment', icon: 'delete', act: true,
+    run: async () => {
+      if (!confirm('Remove all demo data?')) return;
+      try {
+        await authedFetch('/api/demo/seed', { method: 'DELETE' });
+        toast('Demo data cleared', { type: 'success' });
+        setTimeout(() => location.reload(), 600);
+      } catch (e) { toast(`Could not clear demo: ${e.message}`, { type: 'error' }); }
+    } },
+  { label: 'Show keyboard shortcuts', icon: 'keyboard_command_key', act: true,
+    run: () => toggleHelp() },
+];
+
+async function authedFetch(url, opts = {}) {
+  const res = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${token()}`, ...(opts.headers ?? {}) } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  return body;
+}
 
 const SHORTCUTS = [
   ['⌘K / Ctrl-K', 'Open command palette'],
@@ -108,15 +146,11 @@ async function loadDevices(q) {
 }
 
 function rebuild(q) {
-  const navMatches = NAV
+  const rank = (list) => list
     .map((n) => ({ ...n, score: fuzzy(q, n.label) }))
     .filter((n) => n.score !== Infinity)
     .sort((a, b) => a.score - b.score);
-  const devMatches = devices
-    .map((d) => ({ ...d, score: fuzzy(q, d.label) }))
-    .filter((d) => d.score !== Infinity)
-    .sort((a, b) => a.score - b.score);
-  items = [...navMatches, ...devMatches].slice(0, 12);
+  items = [...rank(NAV), ...rank(devices), ...rank(ACTIONS)].slice(0, 14);
   active = 0;
   renderList();
 }
@@ -130,7 +164,7 @@ function renderList() {
     <div class="w-pal-item ${i === active ? 'active' : ''}" role="option" aria-selected="${i === active}" data-i="${i}">
       <span class="material-symbols-outlined">${it.icon ?? 'chevron_right'}</span>
       <span class="w-pal-label">${escapeHtml(it.label)}${it.sub ? `<span class="w-pal-sub">${escapeHtml(it.sub)}</span>` : ''}</span>
-      ${it.key ? `<kbd>g ${it.key}</kbd>` : it.device ? '<kbd>device</kbd>' : ''}
+      ${it.key ? `<kbd>g ${it.key}</kbd>` : it.device ? '<kbd>device</kbd>' : it.act ? '<kbd>action</kbd>' : ''}
     </div>`).join('');
   listEl.querySelectorAll('.w-pal-item').forEach((row) => {
     row.addEventListener('click', () => { active = Number(row.dataset.i); run(); });
@@ -149,7 +183,9 @@ function onKey(e) {
 
 function run() {
   const it = items[active];
-  if (it?.href) { close(); location.href = it.href; }
+  if (!it) return;
+  if (it.run) { close(); it.run(); return; }
+  if (it.href) { close(); location.href = it.href; }
 }
 
 let debounce;

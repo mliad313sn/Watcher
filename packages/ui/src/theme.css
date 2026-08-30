@@ -51,6 +51,58 @@
 
   --sidebar-w: 240px;
   --topbar-h: 48px;
+
+  /* Tokens that differ by theme but aren't semantic colours above. */
+  --nav-active-bg: #0b1121;       /* selected sidebar item */
+  --atmos-from: rgba(18, 33, 49, 0.5);
+  --atmos-to: rgba(5, 20, 36, 1);
+  --shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Light theme ───────────────────────────────────────────────────────────
+   Watcher is dark-first (the NOC charter), so light is a deliberate, legible
+   daylight variant of the SAME system — applied when the OS asks for light and
+   the user hasn't forced dark, or when the user explicitly picks light. Every
+   token below has a dark counterpart above; components read tokens only. */
+:root[data-theme="light"],
+:root[data-theme="light"] body {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { color-scheme: light; }
+}
+:root[data-theme="light"] {
+  --bg: #eef1f7;  --bg-deep: #e6eaf2;  --bg-low: #f7f9fc;
+  --bg-raised: #ffffff;  --bg-high: #eef2f8;  --bg-hover: #e2e8f2;
+  --border: #dbe1ea;  --border-strong: #c2cad7;
+  --text: #1a2231;  --text-head: #0f1826;  --text-dim: #46506180;
+  --text-dim: #495468;  --text-faint: #7a8394;
+  --accent: #2f6fe0;  --accent-text: #1d4ed8;  --accent-soft: rgba(47, 111, 224, 0.10);
+  --ok: #2f6fe0;  --ok-soft: rgba(47, 111, 224, 0.10);
+  --warning: #b9791f;  --warning-soft: rgba(185, 121, 31, 0.12);
+  --critical: #cf4a44;  --critical-deep: #cf4a44;  --critical-soft: rgba(207, 74, 68, 0.12);
+  --info: #2f6fe0;  --info-soft: rgba(47, 111, 224, 0.10);
+  --unknown: #6b7280;  --unknown-soft: rgba(107, 114, 128, 0.12);
+  --nav-active-bg: #e7eefb;
+  --atmos-from: rgba(226, 233, 246, 0.6);  --atmos-to: rgba(238, 241, 247, 1);
+  --shadow-pop: 0 16px 40px rgba(30, 40, 70, 0.14);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef1f7;  --bg-deep: #e6eaf2;  --bg-low: #f7f9fc;
+    --bg-raised: #ffffff;  --bg-high: #eef2f8;  --bg-hover: #e2e8f2;
+    --border: #dbe1ea;  --border-strong: #c2cad7;
+    --text: #1a2231;  --text-head: #0f1826;  --text-dim: #495468;  --text-faint: #7a8394;
+    --accent: #2f6fe0;  --accent-text: #1d4ed8;  --accent-soft: rgba(47, 111, 224, 0.10);
+    --ok: #2f6fe0;  --ok-soft: rgba(47, 111, 224, 0.10);
+    --warning: #b9791f;  --warning-soft: rgba(185, 121, 31, 0.12);
+    --critical: #cf4a44;  --critical-deep: #cf4a44;  --critical-soft: rgba(207, 74, 68, 0.12);
+    --info: #2f6fe0;  --info-soft: rgba(47, 111, 224, 0.10);
+    --unknown: #6b7280;  --unknown-soft: rgba(107, 114, 128, 0.12);
+    --nav-active-bg: #e7eefb;
+    --atmos-from: rgba(226, 233, 246, 0.6);  --atmos-to: rgba(238, 241, 247, 1);
+    --shadow-pop: 0 16px 40px rgba(30, 40, 70, 0.14);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -73,7 +125,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(18, 33, 49, 0.5) 0%, rgba(5, 20, 36, 1) 100%);
+  background: radial-gradient(circle at 50% 0%, var(--atmos-from) 0%, var(--atmos-to) 100%);
 }
 body > * { position: relative; z-index: 1; }
 

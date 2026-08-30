@@ -9,6 +9,7 @@
  */
 import { escapeHtml, escapeAttr } from './escape.js';
 import { openPalette, installShortcuts } from './palette.js';
+import { effectiveTheme, toggleTheme } from './theme.js';
 
 const NAV = [
   { id: 'dashboard', href: '/index.html', label: 'Global View', icon: 'language' },
@@ -65,11 +66,14 @@ export class WShell extends HTMLElement {
                 <kbd class="w-search-kbd mono">⌘K</kbd>
               </button>
             </div>
-            <div class="row" style="gap:16px">
+            <div class="row" style="gap:12px">
               <span class="status-pill" id="w-status-pill">
                 <span class="dot"></span><span id="w-status-text">Status: —</span>
               </span>
               <div class="row" style="gap:4px" id="w-health"></div>
+              <button class="w-icon-btn" id="w-theme" type="button" aria-label="Toggle light or dark theme" title="Toggle theme">
+                <span class="material-symbols-outlined" aria-hidden="true">${effectiveTheme() === 'light' ? 'dark_mode' : 'light_mode'}</span>
+              </button>
             </div>
           </header>
           <main class="content" id="w-main" role="main" tabindex="-1">${content}</main>
@@ -84,6 +88,13 @@ export class WShell extends HTMLElement {
     });
 
     this.querySelector('#w-search-btn')?.addEventListener('click', () => openPalette());
+
+    const themeBtn = this.querySelector('#w-theme');
+    themeBtn?.addEventListener('click', () => {
+      const now = toggleTheme();
+      themeBtn.querySelector('.material-symbols-outlined').textContent =
+        now === 'light' ? 'dark_mode' : 'light_mode';
+    });
 
     this.#injectChromeStyles();
     this.#autoHealth();
@@ -175,7 +186,7 @@ export class WShell extends HTMLElement {
       .w-sidebar nav a:hover { background: var(--bg-high); color: var(--text);
         text-decoration: none; }
       .w-sidebar nav a:hover .material-symbols-outlined { transform: scale(1.1); }
-      .w-sidebar nav a.active { background: #0b1121; color: var(--text-head);
+      .w-sidebar nav a.active { background: var(--nav-active-bg); color: var(--text-head);
         border-left-color: var(--text-head); font-weight: 600; }
       .w-badge { margin-left: auto; background: var(--critical-deep); color: #ffdad6;
         font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 2px; }
@@ -200,6 +211,11 @@ export class WShell extends HTMLElement {
       .w-search-ph { flex: 1; font-size: 13px; }
       .w-search-kbd { font-size: 11px; color: var(--text-faint); background: var(--bg-low);
         border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+      .w-icon-btn { display: grid; place-items: center; width: 30px; height: 30px;
+        border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-high);
+        color: var(--text-dim); cursor: pointer; transition: color .12s, border-color .12s; }
+      .w-icon-btn:hover { color: var(--text-head); border-color: var(--border-strong); }
+      .w-icon-btn .material-symbols-outlined { font-size: 18px; }
       .w-skip { position: absolute; left: 8px; top: -40px; z-index: 100;
         background: var(--accent); color: #061024; padding: 8px 14px; border-radius: 0 0 6px 6px;
         font-size: 13px; font-weight: 600; transition: top .12s; }

@@ -1,4 +1,5 @@
 import '@watcher/ui';
+import { startTour, tourSeen } from '@watcher/ui';
 import { api, requireAuth, liveEvents, chipClassFor } from '../lib/api.js';
 
 requireAuth();
@@ -80,6 +81,27 @@ async function refresh() {
   shell.setHealth(summary);
   renderState(state);
   refreshDemoBanner();
+  maybeTour();
+}
+
+// ── First-run guided tour: anchored to the live panels, shows once ──────────
+let tourStarted = false;
+function maybeTour() {
+  if (tourStarted || tourSeen('watcher.tour.v1')) return;
+  tourStarted = true;
+  // Give the board one paint so every anchor exists and has size.
+  setTimeout(() => startTour([
+    { el: '#tiles', title: 'Health at a glance',
+      body: 'Fleet-wide status tiles. Anything non-zero in Down, Unreachable or Critical deserves a look.' },
+    { el: '#feed', title: 'Live events',
+      body: 'Every state change and alert as it happens, primed with recent history — the pulse of the estate.' },
+    { el: '#problems', title: 'Active problems',
+      body: 'What is broken right now, worst first. Dependency-suppressed children are folded under their root cause in Alerts.' },
+    { el: '#w-search-btn', title: 'Jump anywhere',
+      body: 'Press `Ctrl` `K` (or `⌘K`) to jump to any page or device, run actions, or type `?` for every shortcut.' },
+    { el: '#w-theme', title: 'Make it yours',
+      body: 'Toggle light or dark. Watcher follows your OS preference until you choose.' },
+  ], { key: 'watcher.tour.v1' }), 450);
 }
 
 async function renderFirstRun() {

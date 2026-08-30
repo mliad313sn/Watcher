@@ -10,3 +10,5 @@ export { escapeHtml, escapeAttr } from './escape.js';
 export { toast } from './toast.js';
 export { timeAgo } from './format.js';
 export { openPalette, installShortcuts } from './palette.js';
+export { storedTheme, effectiveTheme, applyTheme, toggleTheme } from './theme.js';
+export { startTour, tourSeen } from './tour.js';

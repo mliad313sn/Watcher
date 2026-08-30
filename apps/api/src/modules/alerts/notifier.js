@@ -238,6 +238,49 @@ export class NotifierEngine {
         // webhook if configured, otherwise it's flagged for setup.
         if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: `${alert.message}${ackLine}${rbLine}` }); return; }
         return { status: 'skipped', error: 'email requires action.gatewayUrl (SMTP not bundled)' };
+      case 'teams':
+        // Microsoft Teams incoming webhook (MessageCard). Facts render in the
+        // card body; ack/runbook become tappable actions.
+        await this.#post(action.url, {
+          '@type': 'MessageCard', '@context': 'https://schema.org/extensions',
+          summary: title,
+          themeColor: alert.severity === 'critical' ? 'D93F4C' : alert.severity === 'warning' ? 'F0A030' : '4A8EFF',
+          title,
+          text: alert.message,
+          sections: [{ facts: [
+            { name: 'Device', value: alert.device_name },
+            ...(alert.check_name ? [{ name: 'Check', value: alert.check_name }] : []),
+            { name: 'Severity', value: alert.severity },
+            ...(runbook ? [{ name: 'Runbook', value: runbook.name }] : []),
+          ] }],
+          potentialAction: [
+            ...(ackUrl ? [{ '@type': 'OpenUri', name: 'Acknowledge', targets: [{ os: 'default', uri: ackUrl }] }] : []),
+            ...(rbLink ? [{ '@type': 'OpenUri', name: 'Open runbook', targets: [{ os: 'default', uri: rbLink }] }] : []),
+          ],
+        });
+        return;
+      case 'pagerduty': {
+        // PagerDuty Events API v2. dedup_key = alert id so re-notifies update
+        // the same PD incident instead of stacking new ones.
+        if (!action.routingKey) return { status: 'skipped', error: 'pagerduty requires action.routingKey' };
+        await this.#post(action.url || 'https://events.pagerduty.com/v2/enqueue', {
+          routing_key: action.routingKey,
+          event_action: 'trigger',
+          dedup_key: `watcher-${alert.id}`,
+          payload: {
+            summary: `${title}: ${alert.message}`.slice(0, 1024),
+            source: alert.device_name,
+            severity: alert.severity === 'warning' ? 'warning' : alert.severity === 'critical' ? 'critical' : 'info',
+            component: alert.check_name || undefined,
+            custom_details: { runbook: runbook?.name, ackUrl },
+          },
+          links: [
+            ...(ackUrl ? [{ href: ackUrl, text: 'Acknowledge in Watcher' }] : []),
+            ...(rbLink ? [{ href: rbLink, text: `Runbook: ${runbook.name}` }] : []),
+          ],
+        });
+        return;
+      }
       case 'log':
         this.log.warn({ alert: alert.id, ackUrl, runbook: runbook?.name }, `NOTIFY ${title}: ${alert.message}`);
         return;

@@ -1,0 +1,409 @@
+<title>Watcher Market Position</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Same dark-first ops identity as the Adoption Review — this is Session 03 of a series. */
+  :root {
+    --ground: #0a0e17; --panel: #12161f; --panel-2: #161b26;
+    --line: #242a3a; --line-soft: #1c2230;
+    --ink: #e9ecf4; --dim: #a2a9bb; --faint: #6c7386;
+    --accent: #4a8eff; --accent-soft: rgba(74,142,255,.14); --accent-line: rgba(74,142,255,.4);
+    --ok: #47c58e; --ok-soft: rgba(71,197,142,.13);
+    --warn: #ffb95f; --warn-soft: rgba(255,185,95,.13);
+    --crit: #ff8d85; --crit-soft: rgba(255,141,133,.13);
+    --shadow: 0 18px 50px rgba(0,0,0,.5);
+    --maxw: 1120px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+      --line: #dfe4ee; --line-soft: #e9edf4;
+      --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+      --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+      --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+      --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+      --crit: #d0453f; --crit-soft: rgba(208,69,63,.10);
+      --shadow: 0 16px 40px rgba(30,40,70,.14);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+    --line: #dfe4ee; --line-soft: #e9edf4;
+    --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+    --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+    --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+    --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+    --crit: #d0453f; --crit-soft: rgba(208,69,63,.10);
+    --shadow: 0 16px 40px rgba(30,40,70,.14);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.015em; }
+  a { color: var(--accent); }
+
+  header.mast { border-bottom: 1px solid var(--line); background:
+      radial-gradient(120% 150% at 18% -30%, var(--accent-soft), transparent 55%), var(--panel); }
+  .mast-in { padding: 40px 0 34px; display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--accent-line); }
+  h1.title { font-size: clamp(30px, 5vw, 44px); font-weight: 700; line-height: 1.08; }
+  .lede { font-size: 17.5px; color: var(--dim); max-width: 68ch; }
+  .mast-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 13px;
+    color: var(--faint); font-family: "IBM Plex Mono", monospace; }
+  .mast-meta b { color: var(--ink); font-weight: 500; }
+
+  /* The positioning statement is the hero thesis. */
+  .thesis { margin-top: 6px; border-left: 3px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 10px 10px 0; padding: 18px 22px; font-size: 17px; line-height: 1.6;
+    max-width: 74ch; }
+  .thesis b { color: var(--accent); }
+
+  section { padding: 46px 0; border-bottom: 1px solid var(--line-soft); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 24px; }
+  .sec-num { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--faint);
+    border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; flex-shrink: 0; }
+  h2.sec-title { font-size: 23px; font-weight: 600; }
+  .sec-sub { color: var(--dim); max-width: 70ch; margin: 8px 0 0; font-size: 15px; }
+
+  /* ── Matrix ── */
+  .matrix-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel); }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 900px; font-size: 12.5px; }
+  .matrix th, .matrix td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--line-soft);
+    white-space: nowrap; }
+  .matrix thead th { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .04em;
+    color: var(--dim); background: var(--panel-2); position: sticky; top: 0; }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; font-weight: 500;
+    position: sticky; left: 0; background: var(--panel); min-width: 210px; white-space: normal; }
+  .matrix thead th:first-child { background: var(--panel-2); }
+  .matrix .watcher-col { background: var(--accent-soft); font-weight: 600; }
+  .matrix thead .watcher-col { color: var(--accent); }
+  .cell { display: inline-block; min-width: 34px; padding: 1px 7px; border-radius: 4px;
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600; }
+  .c-n { background: var(--ok-soft); color: var(--ok); }
+  .c-a { background: var(--warn-soft); color: var(--warn); }
+  .c-p { background: var(--warn-soft); color: var(--warn); opacity: .75; }
+  .c-x { background: var(--crit-soft); color: var(--crit); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--faint); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .matrix-note { margin-top: 10px; font-size: 12px; color: var(--faint); }
+
+  /* ── Gaps & pluses ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .panel h3 { font-size: 17px; margin-bottom: 14px; display: flex; align-items: center; gap: 9px; }
+  .panel h3 .chip { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .08em;
+    padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .chip.plus { background: var(--ok-soft); color: var(--ok); }
+  .chip.gap { background: var(--crit-soft); color: var(--crit); }
+  .item { display: flex; gap: 11px; padding: 9px 0; border-top: 1px solid var(--line-soft);
+    font-size: 14px; align-items: baseline; }
+  .item:first-of-type { border-top: none; }
+  .item .mark { font-family: "IBM Plex Mono", monospace; font-size: 11px; flex-shrink: 0;
+    padding: 1px 7px; border-radius: 4px; font-weight: 600; margin-top: 1px; }
+  .mark.win { background: var(--ok-soft); color: var(--ok); }
+  .mark.hole { background: var(--crit-soft); color: var(--crit); }
+  .mark.closed { background: var(--accent-soft); color: var(--accent); }
+  .item b { font-weight: 600; }
+  .item .why { color: var(--dim); }
+
+  /* ── Segments ── */
+  .segs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .seg { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .seg .n { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--accent); }
+  .seg h3 { font-size: 16.5px; margin-top: 6px; }
+  .seg p { margin: 9px 0 0; font-size: 13.5px; color: var(--dim); }
+  .seg .beats { margin-top: 12px; font-size: 12px; color: var(--faint);
+    font-family: "IBM Plex Mono", monospace; }
+  .seg .beats b { color: var(--ok); font-weight: 600; }
+
+  /* ── Roadmap ── */
+  .roadmap { display: flex; flex-direction: column; gap: 9px; }
+  .rm { display: grid; grid-template-columns: 64px 56px 1fr auto; gap: 14px; align-items: baseline;
+    background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 8px; padding: 11px 15px; }
+  .rm .pri { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; }
+  .rm .pri.p0 { color: var(--crit); } .rm .pri.p1 { color: var(--warn); } .rm .pri.p2 { color: var(--faint); }
+  .rm .eff { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--faint); }
+  .rm .t { font-size: 14px; font-weight: 500; }
+  .rm .t .why { color: var(--faint); font-weight: 400; font-size: 13px; }
+  .rm .st { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; padding: 2px 8px;
+    border-radius: 999px; font-weight: 700; }
+  .st.done { background: var(--ok-soft); color: var(--ok); }
+  .st.next { background: var(--warn-soft); color: var(--warn); }
+  .st.later { background: var(--panel); color: var(--faint); border: 1px solid var(--line); }
+  @media (max-width: 700px) { .rm { grid-template-columns: 1fr; gap: 4px; } }
+
+  footer { padding: 32px 0 60px; color: var(--faint); font-size: 12.5px;
+    font-family: "IBM Plex Mono", monospace; line-height: 1.8; }
+</style>
+
+<header class="mast">
+  <div class="wrap mast-in">
+    <div class="eyebrow">Design &amp; Adoption Committee · Session 03 — Market Position</div>
+    <h1 class="title">Where Watcher wins,<br>and what it must close</h1>
+    <p class="lede">The committee assessed Watcher against the nine products buyers actually shortlist —
+      Datadog, Zabbix, Checkmk, PRTG, OpManager, LogicMonitor, Nagios&nbsp;XI, the Grafana/Prometheus stack,
+      and SolarWinds — grounded in current (2025–26) pricing and capability research. The verdict, the
+      capability matrix, the honest gap list, and the sharpened positioning follow.</p>
+    <div class="thesis">
+      <b>Watcher is the modern, self-hosted console for teams who outgrew Nagios but can't — or won't —
+      move to SaaS observability.</b> It drops into an existing Nagios estate, folds alert floods into
+      ranked root causes through built-in dependency correlation, and ships on-call, runbooks, and a
+      public status page in the box. No PagerDuty. No Statuspage. No per-host meter. Nothing that phones home.
+    </div>
+    <div class="mast-meta">
+      <span>Method: <b>desk research + live product verification</b></span>
+      <span>Competitors assessed: <b>10</b></span>
+      <span>Gap-closers shipped this session: <b>7</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- 01 Capability matrix -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <div><h2 class="sec-title">Capability matrix</h2>
+        <p class="sec-sub">Condensed to the capabilities that decide shortlists. Watcher's column is graded
+          against the code as it runs today — including what shipped this session — not the roadmap.</p></div>
+    </div>
+    <div class="matrix-scroll">
+      <table class="matrix">
+        <thead><tr>
+          <th>Capability</th><th class="watcher-col">Watcher</th><th>Datadog</th><th>Zabbix</th>
+          <th>Checkmk</th><th>PRTG</th><th>OpManager</th><th>Nagios XI</th><th>Grafana+Prom</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>Dependency root-cause correlation</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-a">ADD-ON</span></td><td><span class="cell c-p">MANUAL</span></td>
+            <td><span class="cell c-p">MANUAL</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">LABELS</span></td></tr>
+          <tr><td>On-call rotations (built in)</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-x">ARCHIVED¹</span></td></tr>
+          <tr><td>Runbooks attached to alerts</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-p">URL FIELD</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-p">WORKFLOW</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-p">URL ANNOT.</span></td></tr>
+          <tr><td>Public status page (built in)</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-p">MAPS</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-x">NONE</span></td></tr>
+          <tr><td>Slack / Teams / PagerDuty channels</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE²</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">NATIVE</span></td></tr>
+          <tr><td>Self-hosted / air-gap capable</td>
+            <td class="watcher-col"><span class="cell c-n">YES</span></td>
+            <td><span class="cell c-x">SAAS ONLY</span></td><td><span class="cell c-n">YES</span></td>
+            <td><span class="cell c-n">YES</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">YES</span></td><td><span class="cell c-n">YES</span></td>
+            <td><span class="cell c-n">YES</span></td></tr>
+          <tr><td>Open / drop-in check engine (Nagios)</td>
+            <td class="watcher-col"><span class="cell c-n">YES</span></td>
+            <td><span class="cell c-x">NO</span></td><td><span class="cell c-p">OWN</span></td>
+            <td><span class="cell c-p">DIVERGED</span></td><td><span class="cell c-x">NO</span></td>
+            <td><span class="cell c-x">NO</span></td><td><span class="cell c-n">YES</span></td>
+            <td><span class="cell c-p">OWN</span></td></tr>
+          <tr><td>Mobile acknowledge (no app install)</td>
+            <td class="watcher-col"><span class="cell c-n">SIGNED LINK</span></td>
+            <td><span class="cell c-p">APP</span></td><td><span class="cell c-p">APP/3P</span></td>
+            <td><span class="cell c-p">APP</span></td><td><span class="cell c-p">APP</span></td>
+            <td><span class="cell c-p">APP</span></td><td><span class="cell c-p">APP</span></td>
+            <td><span class="cell c-p">3P</span></td></tr>
+          <tr><td>Multi-tenancy</td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-n">ORGS</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">SITES</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">MSP ED.</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-n">ORGS</span></td></tr>
+          <tr><td>Predictable cost (no per-host/sensor meter)</td>
+            <td class="watcher-col"><span class="cell c-n">FLAT</span></td>
+            <td><span class="cell c-x">PER HOST+</span></td><td><span class="cell c-n">FREE</span></td>
+            <td><span class="cell c-a">PER HOST</span></td><td><span class="cell c-x">PER SENSOR</span></td>
+            <td><span class="cell c-a">PER DEVICE</span></td><td><span class="cell c-a">PER NODE</span></td>
+            <td><span class="cell c-n">FREE OSS</span></td></tr>
+          <tr><td>SSO (SAML / OIDC / LDAP)</td>
+            <td class="watcher-col"><span class="cell c-x">GAP — next</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-n">NATIVE</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-a">PREMIUM</span></td>
+            <td><span class="cell c-n">NATIVE</span></td></tr>
+          <tr><td>Anomaly detection / forecasting</td>
+            <td class="watcher-col"><span class="cell c-x">NONE³</span></td>
+            <td><span class="cell c-n">WATCHDOG</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-a">ADD-ON</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td></tr>
+          <tr><td>Log management</td>
+            <td class="watcher-col"><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-p">PARTIAL</span></td>
+            <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-n">LOKI</span></td></tr>
+          <tr><td>APM / distributed tracing</td>
+            <td class="watcher-col"><span class="cell c-x">NONE — out of scope</span></td>
+            <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-x">NONE</span></td><td><span class="cell c-x">NONE</span></td>
+            <td><span class="cell c-n">TEMPO</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span><span class="cell c-n">NATIVE</span> in the box</span>
+      <span><span class="cell c-a">ADD-ON</span> paid tier / separate product</span>
+      <span><span class="cell c-p">PARTIAL</span> exists but manual or limited</span>
+      <span><span class="cell c-x">NONE</span> absent</span>
+    </div>
+    <p class="matrix-note">¹ Grafana OnCall OSS entered maintenance in 2025 and is archived as of March 2026 —
+      self-hosted Grafana users lost their on-call story. &nbsp;² Slack + webhook existed; Microsoft Teams cards and
+      PagerDuty Events v2 shipped this session. &nbsp;³ Deliberate: Watcher leads with <em>deterministic</em>
+      topology correlation, not ML — but baseline dynamic thresholds are on the roadmap. LogicMonitor and
+      SolarWinds omitted for width; both are SaaS/enterprise-priced and track Datadog's pattern.</p>
+  </section>
+
+  <!-- 02 Pluses / gaps -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <div><h2 class="sec-title">The pluses — and the honest gaps</h2>
+        <p class="sec-sub">What makes Watcher better than the field today, and what a buyer will fairly hold
+          against it. Gaps marked CLOSED shipped during this session.</p></div>
+    </div>
+    <div class="two-col">
+      <div class="panel">
+        <h3><span class="chip plus">ADVANTAGES</span> Where Watcher beats the field</h3>
+        <div class="item"><span class="mark win">1</span><div><b>Correlation-first, as a primitive.</b>
+          <span class="why">Automatic topology root-cause + child suppression is core architecture. Datadog and
+          LogicMonitor sell it as an upgrade; Zabbix/Checkmk/Nagios&nbsp;XI make you hand-author it.</span></div></div>
+        <div class="item"><span class="mark win">2</span><div><b>Drop-in for the Nagios installed base.</b>
+          <span class="why">Same engine, same plugins, same checks — with a console from this decade. The
+          largest legacy estate in monitoring becomes the funnel.</span></div></div>
+        <div class="item"><span class="mark win">3</span><div><b>The incident stack is in the box.</b>
+          <span class="why">On-call rotations + escalation + runbooks + status page with zero add-on cost. The
+          market sells this as three products (PagerDuty + Statuspage + docs). Grafana's OnCall OSS is now
+          archived — timing favours us.</span></div></div>
+        <div class="item"><span class="mark win">4</span><div><b>Air-gap credible.</b>
+          <span class="why">Fully self-hosted, vendored fonts, no CDN, no phone-home. OT/ICS, defense and
+          regulated buyers are structurally excluded from Datadog/LogicMonitor.</span></div></div>
+        <div class="item"><span class="mark win">5</span><div><b>Predictable cost.</b>
+          <span class="why">No per-sensor (PRTG), per-host (Datadog), or per-node (Nagios&nbsp;XI) meter, and no
+          3-year subscription lock-in (SolarWinds).</span></div></div>
+        <div class="item"><span class="mark win">6</span><div><b>Operator-grade UX.</b>
+          <span class="why">⌘K palette with actions, guided tour, light/dark, one-tap mobile ack with no app
+          install, bulk ack, assignment. A visible generation ahead of Zabbix/Nagios&nbsp;XI/Icinga.</span></div></div>
+      </div>
+      <div class="panel">
+        <h3><span class="chip gap">GAPS</span> What buyers will hold against us</h3>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>Teams &amp; PagerDuty channels.</b>
+          <span class="why">Shipped this session: native Teams MessageCards and PagerDuty Events v2 (deduped
+          per alert), joining Slack/webhook/email.</span></div></div>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>Light theme, tour, bulk ops.</b>
+          <span class="why">Daylight theme + onboarding tour + bulk ack + assignment + saved views — the
+          demo-to-daily-use parity set.</span></div></div>
+        <div class="item"><span class="mark hole">P0</span><div><b>SSO — SAML / OIDC / LDAP.</b>
+          <span class="why">The single biggest deal-blocker left, and it gates the exact regulated buyers we
+          target. Committed next.</span></div></div>
+        <div class="item"><span class="mark hole">P1</span><div><b>SLA reports &amp; scheduled exports.</b>
+          <span class="why">Availability reporting exists; PDF/CSV scheduling to rival Nagios&nbsp;XI
+          Enterprise/OpManager does not yet.</span></div></div>
+        <div class="item"><span class="mark hole">P1</span><div><b>Deeper auto-discovery &amp; agents.</b>
+          <span class="why">CIDR discovery exists; L2/LLDP auto-topology and an OS metrics agent trail
+          Zabbix/Checkmk/PRTG.</span></div></div>
+        <div class="item"><span class="mark hole">P2</span><div><b>Anomaly detection, logs, cloud APIs.</b>
+          <span class="why">Deliberately out of the wedge. We say so plainly rather than pretend — full-stack
+          observability buyers should buy Datadog or Grafana.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 Segments -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <div><h2 class="sec-title">The three buyers Watcher wins</h2>
+        <p class="sec-sub">Positioning is choosing. Watcher does not chase cloud-native APM buyers — it wins
+          these three segments decisively.</p></div>
+    </div>
+    <div class="segs">
+      <div class="seg"><div class="n mono">SEGMENT A</div>
+        <h3>Nagios shops modernizing</h3>
+        <p>Thousands of estates still run Nagios Core/XI or Icinga. Watcher keeps their engine, plugins and
+          checks, and replaces the console, alert flood and bolt-on sprawl in one move.</p>
+        <div class="beats">DISPLACES <b>Nagios XI · Icinga</b> — same engine, modern everything else</div></div>
+      <div class="seg"><div class="n mono">SEGMENT B</div>
+        <h3>Air-gapped &amp; regulated ops</h3>
+        <p>OT/ICS, defense, government, healthcare networks where SaaS is disqualified by policy. They still
+          deserve correlation, on-call and a status page — nobody else pairs air-gap with that set.</p>
+        <div class="beats">BEATS <b>Zabbix · Checkmk Raw</b> on integrated incident tooling; <b>Datadog/LM</b> can't bid</div></div>
+      <div class="seg"><div class="n mono">SEGMENT C</div>
+        <h3>Mid-market NOCs &amp; MSPs</h3>
+        <p>Priced out of Datadog, burned by PRTG sensor math and SolarWinds lock-in. Multi-tenant from day
+          one, flat predictable cost, and the ⌘K console operators actually enjoy.</p>
+        <div class="beats">BEATS <b>PRTG · SolarWinds</b> on cost model; <b>OpManager</b> on incident stack</div></div>
+    </div>
+  </section>
+
+  <!-- 04 Roadmap -->
+  <section style="border-bottom:none">
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <div><h2 class="sec-title">Gap-closing roadmap</h2>
+        <p class="sec-sub">Sequenced by deal impact over scope appeal: close what loses deals before building
+          what widens the product. Effort: S = days–2 weeks · M = weeks · L = a quarter+.</p></div>
+    </div>
+    <div class="roadmap">
+      <div class="rm"><span class="pri p0">P0</span><span class="eff">S</span>
+        <span class="t">Teams + PagerDuty native channels <span class="why">— removes the #1 NOC objection</span></span>
+        <span class="st done">SHIPPED</span></div>
+      <div class="rm"><span class="pri p0">P0</span><span class="eff">S</span>
+        <span class="t">Daily-use parity: light theme, tour, bulk ack, assignment, saved views, palette actions</span>
+        <span class="st done">SHIPPED</span></div>
+      <div class="rm"><span class="pri p0">P0</span><span class="eff">M</span>
+        <span class="t">SSO — SAML / OIDC / LDAP with group→role mapping <span class="why">— unblocks enterprise &amp; gov procurement</span></span>
+        <span class="st next">NEXT</span></div>
+      <div class="rm"><span class="pri p1">P1</span><span class="eff">M</span>
+        <span class="t">SLA / availability reports with scheduled PDF/CSV export <span class="why">— parity with Nagios XI Ent / OpManager</span></span>
+        <span class="st next">NEXT</span></div>
+      <div class="rm"><span class="pri p1">P1</span><span class="eff">S</span>
+        <span class="t">Maintenance-window UI <span class="why">— scheduled downtime suppressing alerts + status-page banner</span></span>
+        <span class="st next">NEXT</span></div>
+      <div class="rm"><span class="pri p1">P1</span><span class="eff">M</span>
+        <span class="t">Scoped API tokens + granular RBAC <span class="why">— automation &amp; MSP hardening</span></span>
+        <span class="st later">PLANNED</span></div>
+      <div class="rm"><span class="pri p2">P2</span><span class="eff">M</span>
+        <span class="t">Config-as-code: declarative devices/checks/rules in Git <span class="why">— modern buyer expectation</span></span>
+        <span class="st later">PLANNED</span></div>
+      <div class="rm"><span class="pri p2">P2</span><span class="eff">L</span>
+        <span class="t">L2/LLDP auto-topology + lightweight OS agent <span class="why">— discovery parity with Zabbix/Checkmk</span></span>
+        <span class="st later">PLANNED</span></div>
+      <div class="rm"><span class="pri p2">P2</span><span class="eff">M</span>
+        <span class="t">Statistical dynamic thresholds on Timescale metrics <span class="why">— answers the anomaly question without ML theatre</span></span>
+        <span class="st later">PLANNED</span></div>
+    </div>
+  </section>
+
+  <footer>
+    Watcher · Committee Session 03 — Market Position · Competitive data from vendor pricing/docs and
+    third-party reviews (2025–26); directional, verify before external use. Watcher capability grades
+    verified against the running product. Companion report: Session 02 — Adoption Review.
+  </footer>
+</div>

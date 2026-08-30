@@ -26,10 +26,11 @@ export default async function alertRoutes(fastify) {
     params.push(limit, offset);
 
     const { rows } = await fastify.pg.query(
-      `SELECT * FROM alerts
-       WHERE ${where.join(' AND ')}
-       ORDER BY CASE severity WHEN 'critical' THEN 3 WHEN 'warning' THEN 2 ELSE 1 END DESC,
-                opened_at DESC
+      `SELECT a.*, u.username AS assignee
+       FROM alerts a LEFT JOIN users u ON u.id = a.assignee_user_id
+       WHERE ${where.map((w) => w.replace(/^(tenant_id|status|severity|device_name)/, 'a.$1')).join(' AND ')}
+       ORDER BY CASE a.severity WHEN 'critical' THEN 3 WHEN 'warning' THEN 2 ELSE 1 END DESC,
+                a.opened_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -70,6 +71,61 @@ export default async function alertRoutes(fastify) {
     return { alert: rows[0] };
   });
 
+  /** Claim / release an incident. body.userId omitted = assign to caller;
+   *  body.userId null = unassign. The room sees who owns what. */
+  fastify.post('/:id/assign', {
+    schema: {
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      body: {
+        type: 'object',
+        properties: { userId: { type: ['string', 'null'] } },
+      },
+    },
+    preHandler: fastify.requireRole('operator'),
+  }, async (request, reply) => {
+    const hasField = request.body && 'userId' in request.body;
+    const target = hasField ? request.body.userId : request.user.sub;
+    const { rows } = await fastify.pg.query(
+      `UPDATE alerts
+       SET assignee_user_id = $2::uuid, assigned_at = CASE WHEN $2::uuid IS NULL THEN NULL ELSE now() END
+       WHERE id = $1 AND tenant_id = $3 AND status <> 'resolved'
+       RETURNING *`,
+      [request.params.id, target, request.user.tenantId]);
+    if (rows.length === 0) return reply.code(404).send({ error: 'alert not found or resolved' });
+    await fastify.redis.publish(REDIS_KEYS.eventsAlerts,
+      JSON.stringify({ action: 'updated', alert: rows[0] })).catch(() => {});
+    return { alert: rows[0] };
+  });
+
+  /** Bulk acknowledge — clear an alert storm in one action. */
+  fastify.post('/bulk-ack', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['ids', 'comment'],
+        properties: {
+          ids: { type: 'array', minItems: 1, maxItems: 200,
+                 items: { type: 'string', format: 'uuid' } },
+          comment: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+    preHandler: fastify.requireRole('operator'),
+  }, async (request) => {
+    const { ids, comment } = request.body;
+    const { rows } = await fastify.pg.query(
+      `UPDATE alerts
+       SET status = 'acknowledged', ack_user_id = $2, ack_comment = $3
+       WHERE id = ANY($1::uuid[]) AND tenant_id = $4 AND status IN ('open', 'suppressed')
+       RETURNING *`,
+      [ids, request.user.sub, comment, request.user.tenantId]);
+    for (const alert of rows) {
+      fastify.redis.publish(REDIS_KEYS.eventsAlerts,
+        JSON.stringify({ action: 'updated', alert })).catch(() => {});
+    }
+    return { acknowledged: rows.length, requested: ids.length };
+  });
+
   // ── Notification & escalation rules ────────────────────────────────────────
   fastify.get('/rules', { preHandler: fastify.requireRole('operator') }, async (request) => {
     const { rows } = await fastify.pg.query(
@@ -83,10 +139,11 @@ export default async function alertRoutes(fastify) {
       type: 'object',
       required: ['type'],
       properties: {
-        type: { type: 'string', enum: ['webhook', 'slack', 'email', 'log', 'oncall'] },
+        type: { type: 'string', enum: ['webhook', 'slack', 'teams', 'pagerduty', 'email', 'log', 'oncall'] },
         url: { type: 'string' },
         to: { type: 'string' },
         gatewayUrl: { type: 'string' },
+        routingKey: { type: 'string' }, // for type: 'pagerduty' (Events API v2)
         scheduleId: { type: 'string', format: 'uuid' }, // for type: 'oncall'
       },
     },
