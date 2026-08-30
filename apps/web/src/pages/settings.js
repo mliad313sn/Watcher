@@ -130,3 +130,113 @@ document.getElementById('oncall-form').addEventListener('submit', async (e) => {
 
 await loadOncall();
 setInterval(loadOncall, 30_000);
+
+// ── Runbooks ────────────────────────────────────────────────────────────────
+const rbList = document.getElementById('rb-list');
+
+function describeMatch(m) {
+  const bits = [];
+  if (m.kind) bits.push(`kind=${m.kind}`);
+  if (m.checkPattern) bits.push(`check~/${m.checkPattern}/`);
+  if (m.devicePattern) bits.push(`device~/${m.devicePattern}/`);
+  if (m.minSeverity) bits.push(`≥${m.minSeverity}`);
+  if (m.tags) bits.push(...Object.entries(m.tags).map(([k, v]) => `${k}=${v}`));
+  return bits.length ? bits.join(' · ') : 'any alert';
+}
+
+async function loadRunbooks() {
+  let runbooks = [];
+  try { ({ runbooks } = await api('/runbooks')); } catch { return; }
+  if (runbooks.length === 0) {
+    rbList.innerHTML = '<div class="dim" style="font-size:13px">No runbooks yet — add one below, or load the demo environment.</div>';
+    return;
+  }
+  rbList.innerHTML = runbooks.map((r) => `
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <span class="material-symbols-outlined" style="color:var(--accent);font-size:16px;vertical-align:-3px">menu_book</span>
+          <strong>${esc(r.name)}</strong>
+          <span class="dim mono" style="font-size:11px;margin-left:8px">${esc(describeMatch(r.match || {}))}</span>
+        </div>
+        <button class="btn danger" data-del-rb="${esc(r.id)}" style="font-size:11px;padding:3px 10px">Delete</button>
+      </div>
+    </div>`).join('');
+  rbList.querySelectorAll('[data-del-rb]').forEach((b) => b.addEventListener('click', async () => {
+    await api(`/runbooks/${b.dataset.delRb}`, { method: 'DELETE' }).catch(() => {});
+    loadRunbooks();
+  }));
+}
+
+document.getElementById('rb-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('rb-msg');
+  const match = {};
+  const kind = document.getElementById('rb-kind').value;
+  const check = document.getElementById('rb-check').value.trim();
+  const sev = document.getElementById('rb-sev').value;
+  if (kind) match.kind = kind;
+  if (check) match.checkPattern = check;
+  if (sev) match.minSeverity = sev;
+  const links = document.getElementById('rb-links').value.split('\n').map((l) => l.trim()).filter(Boolean)
+    .map((l) => { const [label, url] = l.split('|').map((s) => s.trim()); return { label: label || url, url: url || label }; })
+    .filter((l) => l.url);
+  try {
+    await api('/runbooks', {
+      method: 'POST',
+      body: { name: document.getElementById('rb-name').value, match, steps: document.getElementById('rb-steps').value, links },
+    });
+    msg.style.color = 'var(--ok)';
+    msg.textContent = 'Runbook created.';
+    e.target.reset();
+    loadRunbooks();
+  } catch (err) {
+    msg.style.color = 'var(--critical)';
+    msg.textContent = err.message;
+  }
+});
+
+await loadRunbooks();
+
+// ── Public status components ────────────────────────────────────────────────
+const scList = document.getElementById('sc-list');
+
+async function loadComponents() {
+  let components = [];
+  try { ({ components } = await api('/status/components')); } catch { return; }
+  if (components.length === 0) {
+    scList.innerHTML = '<div class="dim" style="font-size:13px">No components yet — add one below, or load the demo environment.</div>';
+    return;
+  }
+  scList.innerHTML = components.map((c) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+      <div><strong>${esc(c.name)}</strong>
+        <span class="dim mono" style="font-size:11px;margin-left:8px">${esc(c.match?.kind ? 'kind=' + c.match.kind : 'custom match')}</span></div>
+      <button class="btn danger" data-del-sc="${esc(c.id)}" style="font-size:11px;padding:3px 10px">Remove</button>
+    </div>`).join('');
+  scList.querySelectorAll('[data-del-sc]').forEach((b) => b.addEventListener('click', async () => {
+    await api(`/status/components/${b.dataset.delSc}`, { method: 'DELETE' }).catch(() => {});
+    loadComponents();
+  }));
+}
+
+document.getElementById('sc-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('sc-msg');
+  const kind = document.getElementById('sc-kind').value;
+  try {
+    await api('/status/components', {
+      method: 'POST',
+      body: { name: document.getElementById('sc-name').value, match: kind ? { kind } : {} },
+    });
+    msg.style.color = 'var(--ok)';
+    msg.textContent = 'Component added.';
+    e.target.reset();
+    loadComponents();
+  } catch (err) {
+    msg.style.color = 'var(--critical)';
+    msg.textContent = err.message;
+  }
+});
+
+await loadComponents();

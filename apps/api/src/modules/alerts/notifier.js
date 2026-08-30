@@ -19,6 +19,7 @@
  */
 import { REDIS_KEYS, SEVERITY_WEIGHT } from '@watcher/shared';
 import { currentOnCall } from '../oncall/store.js';
+import { runbookForAlert } from '../runbooks/store.js';
 
 export class NotifierEngine {
   /**
@@ -170,11 +171,17 @@ export class NotifierEngine {
     // A one-tap acknowledge link, valid only for this alert, on every page
     // except recovery notices.
     let ackUrl = null;
-    if (kind !== 'recovery' && this.signAckToken && this.ackBaseUrl) {
-      try {
-        ackUrl = `${this.ackBaseUrl}/ack.html?t=${this.signAckToken(alert.id, alert.tenant_id)}`;
-      } catch { /* signing unavailable — pages still go out, just without the link */ }
+    let runbook = null;
+    if (kind !== 'recovery') {
+      if (this.signAckToken && this.ackBaseUrl) {
+        try {
+          ackUrl = `${this.ackBaseUrl}/ack.html?t=${this.signAckToken(alert.id, alert.tenant_id)}`;
+        } catch { /* signing unavailable — pages still go out, just without the link */ }
+      }
+      // Enrich the page with remediation if a runbook applies.
+      try { runbook = await runbookForAlert(this.pg, alert); } catch { /* best-effort */ }
     }
+    const extra = { ackUrl, runbook };
 
     let status = 'sent';
     let error = null;
@@ -191,11 +198,11 @@ export class NotifierEngine {
         } else {
           const contact = current.onCall.contact ?? { type: 'log' };
           target = `${current.onCall.name} · ${contact.type ?? 'log'}`;
-          const r = await this.#deliver(contact, title, alert, ackUrl);
+          const r = await this.#deliver(contact, title, alert, extra);
           if (r) { status = r.status; error = r.error; }
         }
       } else {
-        const r = await this.#deliver(action, title, alert, ackUrl);
+        const r = await this.#deliver(action, title, alert, extra);
         if (r) { status = r.status; error = r.error; }
       }
     } catch (err) {
@@ -213,22 +220,26 @@ export class NotifierEngine {
 
   /** Raw delivery for a concrete contact/action. Returns {status,error} for
    *  non-fatal outcomes, undefined when sent, throws on transport failure. */
-  async #deliver(action, title, alert, ackUrl = null) {
+  async #deliver(action, title, alert, extra = {}) {
+    const { ackUrl = null, runbook = null } = extra;
+    const rbLink = runbook?.links?.[0]?.url;
     const ackLine = ackUrl ? `\nAcknowledge: ${ackUrl}` : '';
+    const rbLine = runbook ? `\nRunbook: ${runbook.name}${rbLink ? ' — ' + rbLink : ''}` : '';
+    const rbSummary = runbook ? { name: runbook.name, steps: runbook.steps, links: runbook.links } : null;
     switch (action.type) {
       case 'webhook':
-        await this.#post(action.url, { title, alert, ackUrl });
+        await this.#post(action.url, { title, alert, ackUrl, runbook: rbSummary });
         return;
       case 'slack':
-        await this.#post(action.url, { text: `${title}\n${alert.message}${ackLine}` });
+        await this.#post(action.url, { text: `${title}\n${alert.message}${ackLine}${rbLine}` });
         return;
       case 'email':
         // No SMTP client is bundled; email goes via an external mail-gateway
         // webhook if configured, otherwise it's flagged for setup.
-        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: `${alert.message}${ackLine}` }); return; }
+        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: `${alert.message}${ackLine}${rbLine}` }); return; }
         return { status: 'skipped', error: 'email requires action.gatewayUrl (SMTP not bundled)' };
       case 'log':
-        this.log.warn({ alert: alert.id, ackUrl }, `NOTIFY ${title}: ${alert.message}`);
+        this.log.warn({ alert: alert.id, ackUrl, runbook: runbook?.name }, `NOTIFY ${title}: ${alert.message}`);
         return;
       default:
         return { status: 'skipped', error: `unknown action type: ${action.type}` };

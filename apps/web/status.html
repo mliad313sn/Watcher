@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>System Status · Watcher</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+  <style>
+    body { display: block; }
+    .status-wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 60px; }
+    .status-head { text-align: center; margin-bottom: 28px; }
+    .status-head .brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 22px; }
+    .status-head .brand strong { font-size: 15px; color: var(--text-head); letter-spacing: -0.01em; }
+    .overall {
+      border-radius: 14px; padding: 26px 24px; text-align: center;
+      border: 1px solid var(--border); background: var(--bg-raised);
+    }
+    .overall.operational { border-color: var(--ok); background: var(--ok-soft); }
+    .overall.degraded { border-color: var(--warning); background: var(--warning-soft); }
+    .overall.major_outage { border-color: var(--critical); background: var(--critical-soft); }
+    .overall .big { font-size: 24px; font-weight: 700; font-family: var(--font); letter-spacing: -0.01em; }
+    .overall.operational .big { color: var(--ok); }
+    .overall.degraded .big { color: var(--warning); }
+    .overall.major_outage .big { color: var(--critical); }
+    .components { margin-top: 22px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .comp { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 15px 18px; border-bottom: 1px solid var(--border); background: var(--bg-raised); }
+    .comp:last-child { border-bottom: 0; }
+    .comp .nm { font-weight: 600; font-size: 15px; }
+    .comp .sub { font-size: 12px; color: var(--text-faint); font-family: var(--mono); }
+    .st { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+    .st .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .st.operational { color: var(--ok); } .st.operational .dot { background: var(--ok); }
+    .st.degraded { color: var(--warning); } .st.degraded .dot { background: var(--warning); }
+    .st.major_outage { color: var(--critical); } .st.major_outage .dot { background: var(--critical); }
+    .status-foot { text-align: center; margin-top: 22px; color: var(--text-faint); font-size: 12px; font-family: var(--mono); }
+  </style>
+</head>
+<body>
+  <div class="status-wrap">
+    <div class="status-head">
+      <div class="brand">
+        <span class="material-symbols-outlined" style="color:var(--accent)">shield</span>
+        <strong>Watcher</strong>
+      </div>
+      <div id="board"><div class="dim mono" style="text-align:center;padding:30px">Loading status…</div></div>
+    </div>
+  </div>
+  <script type="module" src="/src/pages/status.js"></script>
+</body>
+</html>

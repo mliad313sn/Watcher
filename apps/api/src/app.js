@@ -20,6 +20,8 @@ import dashboardRoutes from './modules/dashboards/routes.js';
 import discoveryRoutes from './modules/discovery/routes.js';
 import demoRoutes from './modules/demo/routes.js';
 import oncallRoutes from './modules/oncall/routes.js';
+import runbookRoutes from './modules/runbooks/routes.js';
+import statusRoutes from './modules/status/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -85,6 +87,8 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(discoveryRoutes, { prefix: '/api/discovery' });
   await fastify.register(demoRoutes, { prefix: '/api/demo' });
   await fastify.register(oncallRoutes, { prefix: '/api/oncall' });
+  await fastify.register(runbookRoutes, { prefix: '/api/runbooks' });
+  await fastify.register(statusRoutes, { prefix: '/api/status' });
 
   if (withBackgroundJobs) {
     const streamer = new NagiosStreamer(

@@ -76,6 +76,79 @@
         </form>
       </details>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2 style="margin-bottom:2px">Runbooks</h2>
+      <div class="dim" style="font-size:13px">Remediation attached to alerts by match — responders open a page and know what to do.</div>
+      <div id="rb-list" style="margin:16px 0"></div>
+
+      <details style="border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-dim)">＋ New runbook</summary>
+        <form id="rb-form" style="margin-top:12px;max-width:640px">
+          <label for="rb-name">Name</label>
+          <input id="rb-name" placeholder="High CPU / database load" required />
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="rb-kind">Applies to device kind</label>
+              <select id="rb-kind">
+                <option value="">Any kind</option>
+                <option>server</option><option>switch</option><option>router</option>
+                <option>firewall</option><option>storage</option><option>wireless_ap</option><option>pbx</option>
+              </select>
+            </div>
+            <div class="grow">
+              <label for="rb-check">Check name matches (regex)</label>
+              <input id="rb-check" placeholder="CPU|Load|PostgreSQL" style="font-family:var(--mono);font-size:13px" />
+            </div>
+            <div>
+              <label for="rb-sev">Min severity</label>
+              <select id="rb-sev" style="width:130px">
+                <option value="">Any</option><option value="warning">Warning</option><option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+          <label for="rb-steps">Remediation steps (one per line)</label>
+          <textarea id="rb-steps" rows="4" placeholder="1. Check the load source&#10;2. Fail over the replica" style="font-family:var(--mono);font-size:13px"></textarea>
+          <label for="rb-links">Links (one per line, as "Label | https://url")</label>
+          <textarea id="rb-links" rows="2" placeholder="Grafana | https://grafana.example.com/d/db" style="font-family:var(--mono);font-size:13px"></textarea>
+          <div id="rb-msg" style="min-height:18px;font-size:12px;margin-top:8px"></div>
+          <button class="btn primary">Create runbook</button>
+        </form>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <h2 style="margin-bottom:2px">Public status page</h2>
+          <div class="dim" style="font-size:13px">Audience-facing service groups, rolled up from live state — no hostnames exposed.</div>
+        </div>
+        <a class="btn" href="/status.html" target="_blank" rel="noopener" style="font-size:12px">
+          <span class="material-symbols-outlined" style="font-size:15px">open_in_new</span>View public page</a>
+      </div>
+      <div id="sc-list" style="margin:16px 0"></div>
+      <details style="border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-dim)">＋ New component</summary>
+        <form id="sc-form" style="margin-top:12px;max-width:520px">
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="sc-name">Component name</label>
+              <input id="sc-name" placeholder="Core Network" required />
+            </div>
+            <div class="grow">
+              <label for="sc-kind">Groups devices of kind</label>
+              <select id="sc-kind">
+                <option value="">Any kind</option>
+                <option>switch</option><option>router</option><option>firewall</option>
+                <option>server</option><option>storage</option><option>wireless_ap</option><option>pbx</option>
+              </select>
+            </div>
+          </div>
+          <div id="sc-msg" style="min-height:18px;font-size:12px;margin-top:8px"></div>
+          <button class="btn primary">Add component</button>
+        </form>
+      </details>
+    </div>
   </w-shell>
   <script type="module" src="/src/pages/settings.js"></script>
 </body>

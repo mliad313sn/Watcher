@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 // True multi-page build: every page is its own HTML entry with its own
 // module graph. Vite dedupes the shared @watcher/ui chunk automatically.
-const pages = ['index', 'login', 'devices', 'device', 'alerts', 'topology', 'reports', 'settings', 'ack'];
+const pages = ['index', 'login', 'devices', 'device', 'alerts', 'topology', 'reports', 'settings', 'ack', 'status'];
 
 export default defineConfig({
   build: {

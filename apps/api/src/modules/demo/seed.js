@@ -14,6 +14,16 @@ import { FLEET, SERVICES, METRICS, INTERFACES, series, metricShape, trafficShape
 const HOST_STATE_NAME = ['UP', 'DOWN', 'UNREACHABLE'];
 const SVC_STATE_NAME = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN'];
 
+// Audience-facing service groups for the public status page.
+const DEMO_COMPONENTS = [
+  { name: 'Core Network', match: { kind: 'switch' } },
+  { name: 'Perimeter & Firewall', match: { kind: 'firewall' } },
+  { name: 'Compute', match: { kind: 'server' } },
+  { name: 'Storage', match: { kind: 'storage' } },
+  { name: 'Wireless', match: { kind: 'wireless_ap' } },
+  { name: 'Telephony', match: { kind: 'pbx' } },
+];
+
 export async function seedDemo({ pg, tsdb, redis, tenantId, log = console }) {
   const now = Date.now();
 
@@ -106,6 +116,46 @@ export async function seedDemo({ pg, tsdb, redis, tenantId, log = console }) {
      ON CONFLICT DO NOTHING`,
     [tenantId, JSON.stringify([{ type: 'oncall', scheduleId }])]);
 
+  // ── 4b. Runbooks — remediation attached to the demo's incidents ───────────
+  const runbooks = [
+    {
+      name: 'Demo — High CPU / database load',
+      match: { checkPattern: 'CPU|Load|PostgreSQL', minSeverity: 'warning' },
+      priority: 10,
+      steps: '1. Confirm the load source in APM.\n2. Check for a runaway query or stuck job.\n'
+        + '3. Fail over the read replica if primary is saturated.\n4. Scale the instance if sustained.',
+      links: [{ label: 'Grafana — DB dashboard', url: 'https://grafana.example.com/d/db' },
+        { label: 'Query runbook (wiki)', url: 'https://wiki.example.com/runbooks/db-cpu' }],
+    },
+    {
+      name: 'Demo — Network device / uplink down',
+      match: { kind: 'switch', minSeverity: 'warning' },
+      priority: 5,
+      steps: '1. Check the physical link + optics.\n2. Verify the peer and BGP/OSPF adjacency.\n'
+        + '3. Confirm no maintenance window is active.\n4. Fail traffic to the redundant path.',
+      links: [{ label: 'Topology map', url: '/topology.html' },
+        { label: 'Network runbook (wiki)', url: 'https://wiki.example.com/runbooks/net-down' }],
+    },
+  ];
+  for (const rb of runbooks) {
+    await pg.query(
+      `INSERT INTO runbooks (tenant_id, name, match, steps, links, priority)
+       VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6)
+       ON CONFLICT (tenant_id, name) DO UPDATE SET
+         match = EXCLUDED.match, steps = EXCLUDED.steps, links = EXCLUDED.links, priority = EXCLUDED.priority`,
+      [tenantId, rb.name, JSON.stringify(rb.match), rb.steps, JSON.stringify(rb.links), rb.priority]);
+  }
+
+  // ── 4c. Public status-page components (audience-facing service groups) ─────
+  for (let i = 0; i < DEMO_COMPONENTS.length; i++) {
+    const c = DEMO_COMPONENTS[i];
+    await pg.query(
+      `INSERT INTO status_components (tenant_id, name, match, position)
+       VALUES ($1, $2, $3::jsonb, $4)
+       ON CONFLICT (tenant_id, name) DO UPDATE SET match = EXCLUDED.match, position = EXCLUDED.position`,
+      [tenantId, c.name, JSON.stringify(c.match), i]);
+  }
+
   // ── 5. Metrics + availability history (TimescaleDB, best-effort) ──────────
   if (tsdb) {
     await seedMetrics(tsdb, idByName, now, log).catch((err) => log.warn?.({ err }, 'demo metrics skipped'));
@@ -195,6 +245,9 @@ export async function clearDemo({ pg, tsdb, redis, tenantId, log = console }) {
   await clearDemoAlerts(pg, tenantId);
   await pg.query(`DELETE FROM alert_rules WHERE tenant_id = $1 AND name LIKE 'Demo — %'`, [tenantId]);
   await pg.query(`DELETE FROM oncall_schedules WHERE tenant_id = $1 AND name LIKE 'Demo — %'`, [tenantId]);
+  await pg.query(`DELETE FROM runbooks WHERE tenant_id = $1 AND name LIKE 'Demo — %'`, [tenantId]);
+  await pg.query(`DELETE FROM status_components WHERE tenant_id = $1 AND name = ANY($2)`,
+    [tenantId, DEMO_COMPONENTS.map((c) => c.name)]);
 
   if (tsdb && ids.length) {
     await tsdb.query('DELETE FROM metrics WHERE device_id = ANY($1)', [ids]).catch(() => {});
