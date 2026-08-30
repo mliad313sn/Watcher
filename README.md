@@ -14,6 +14,13 @@ export the whole monitoring configuration as one JSON bundle and import it
 idempotently on any install. Fully self-hosted and air-gap friendly (vendored
 fonts, no CDN, no phone-home).
 
+Also in the box: **dynamic thresholds** (deterministic median+MAD anomaly
+detection that explains every alert it raises), **LLDP auto-topology** (the L2
+map builds itself from what switches report), a **zero-dependency OS agent**
+(`apps/agent/watcher-agent.mjs` — pushes CPU/mem/disk/load with a scoped API
+token), a push **metrics ingest API** for any integration, and an
+**installable PWA** so the console lives on a phone home screen.
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │

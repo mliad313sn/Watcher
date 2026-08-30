@@ -77,6 +77,20 @@ const scheduler = new Scheduler({
 await scheduler.start();
 log.info('poller started');
 
+// LLDP auto-topology: refresh the L2 link map from what the switches
+// themselves report — shortly after boot, then hourly.
+import('./lldp.js').then(({ discoverLldpTopology }) => {
+  const walk = async (device) => {
+    const cred = decryptCredential(device.data_enc);
+    return connectors.get('snmp').walkLldp(device.address, cred);
+  };
+  const sweep = () => discoverLldpTopology({ pg: pgPool, log }, walk)
+    .then((r) => { if (r.devices > 0) log.info(r, 'LLDP topology refreshed'); })
+    .catch((err) => log.warn({ err }, 'LLDP sweep failed'));
+  setTimeout(sweep, 30_000).unref();
+  setInterval(sweep, Number(process.env.LLDP_INTERVAL_MS ?? 3_600_000)).unref();
+});
+
 // Discovery job queue (BRPOP loop) — jobs are created by the API.
 import('./discovery-worker.js')
   .then(({ startDiscoveryWorker }) =>

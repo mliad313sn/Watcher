@@ -255,4 +255,37 @@ export class SnmpConnector {
       // Device doesn't speak HOST-RESOURCES / UCD — that's fine for switches.
     }
   }
+
+  /**
+   * Walk the LLDP-MIB remote-systems table for auto-topology. Returns the raw
+   * column walks (adapted to {oid, value} rows for the pure parser) plus an
+   * ifIndex→ifDescr map for readable local port names. Devices without LLDP
+   * simply return empty walks.
+   */
+  async walkLldp(address, cred) {
+    const LLDP = {
+      remSysName: '1.0.8802.1.1.2.1.4.1.1.9',
+      remPortId: '1.0.8802.1.1.2.1.4.1.1.7',
+      remPortDesc: '1.0.8802.1.1.2.1.4.1.1.8',
+    };
+    const session = createSession(address, cred);
+    try {
+      const [sysNames, portIds, portDescs, ifDescrs] = await Promise.all([
+        walkColumn(session, LLDP.remSysName),
+        walkColumn(session, LLDP.remPortId),
+        walkColumn(session, LLDP.remPortDesc),
+        walkColumn(session, OIDS.ifTable.descr),
+      ]);
+      const rows = (base, map) =>
+        [...map].map(([suffix, value]) => ({ oid: `${base}.${suffix}`, value: String(value) }));
+      return {
+        remSysNames: rows(LLDP.remSysName, sysNames),
+        remPortIds: rows(LLDP.remPortId, portIds),
+        remPortDescs: rows(LLDP.remPortDesc, portDescs),
+        ifNames: new Map([...ifDescrs].map(([suffix, value]) => [Number(suffix), String(value)])),
+      };
+    } finally {
+      session.close();
+    }
+  }
 }

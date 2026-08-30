@@ -31,6 +31,7 @@ import configRoutes from './modules/config/routes.js';
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
 import { NotifierEngine } from './modules/alerts/notifier.js';
+import { AnomalyEngine } from './modules/anomaly/engine.js';
 
 const INSECURE_JWT_SECRETS = new Set(['dev-only-secret', 'change-me-in-production']);
 
@@ -146,15 +147,23 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
       },
     );
 
+    const anomaly = config.anomaly?.enabled
+      ? new AnomalyEngine(
+          { pg: fastify.pg, tsdb: fastify.tsdb, redis: fastify.redis, log: fastify.log },
+          config.anomaly)
+      : null;
+
     fastify.addHook('onReady', async () => {
       streamer.start();
       await correlator.start();
       await notifier.start();
+      anomaly?.start();
     });
     fastify.addHook('onClose', async () => {
       streamer.stop();
       await correlator.stop();
       await notifier.stop();
+      anomaly?.stop();
     });
   }
 

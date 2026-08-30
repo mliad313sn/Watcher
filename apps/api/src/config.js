@@ -78,6 +78,15 @@ export const config = {
     },
   },
 
+  anomaly: {
+    // Dynamic thresholds: deterministic median+MAD baselines per device+metric.
+    enabled: env('ANOMALY_ENABLED', 'true') !== 'false',
+    sweepMs: Number(env('ANOMALY_SWEEP_MS', 300000)),
+    zThreshold: Number(env('ANOMALY_Z_THRESHOLD', 4)),
+    minDeltaPct: Number(env('ANOMALY_MIN_DELTA_PCT', 10)),
+    historyDays: Number(env('ANOMALY_HISTORY_DAYS', 7)),
+  },
+
   notify: {
     // One page per incident per cooldown (seconds); escalations bypass it.
     cooldownS: Number(env('NOTIFY_COOLDOWN_S', 300)),

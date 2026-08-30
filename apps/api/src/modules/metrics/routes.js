@@ -258,4 +258,61 @@ export default async function metricsRoutes(fastify) {
     }
     return { days, rows: report };
   });
+
+  /**
+   * Push ingest for agents and integrations (pairs with scoped API tokens:
+   * send X-API-Token). The device is addressed by NAME so an agent needs no
+   * UUID knowledge; it must already exist in the caller's tenant inventory.
+   */
+  fastify.post('/ingest', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['device', 'metrics'],
+        properties: {
+          device: { type: 'string', minLength: 1 },
+          metrics: {
+            type: 'array', minItems: 1, maxItems: 500,
+            items: {
+              type: 'object',
+              required: ['metric', 'value'],
+              properties: {
+                metric: { type: 'string', minLength: 1, maxLength: 120 },
+                value: { type: 'number' },
+                instance: { type: 'string', maxLength: 120 },
+                time: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+        },
+      },
+    },
+    preHandler: fastify.requireRole('operator'),
+  }, async (request, reply) => {
+    const { device, metrics } = request.body;
+    const { rows } = await fastify.pg.query(
+      'SELECT id FROM devices WHERE name = $1 AND tenant_id = $2',
+      [device, request.user.tenantId]);
+    if (!rows[0]) return reply.code(404).send({ error: `device "${device}" not in inventory` });
+    const deviceId = rows[0].id;
+
+    const params = [];
+    const tuples = metrics.map((m, i) => {
+      const o = i * 5;
+      params.push(m.time ?? new Date().toISOString(), deviceId, m.metric, m.instance ?? '', m.value);
+      return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5})`;
+    });
+    await fastify.tsdb.query(
+      `INSERT INTO metrics (time, device_id, metric, instance, value)
+       VALUES ${tuples.join(', ')} ON CONFLICT DO NOTHING`,
+      params);
+
+    // Live tick so open charts update without waiting for the next poll.
+    fastify.redis.publish(REDIS_KEYS.eventsMetrics, JSON.stringify({
+      deviceId, samples: metrics.map((m) => ({ metric: m.metric, instance: m.instance ?? '', value: m.value })),
+      ts: Date.now(),
+    })).catch(() => {});
+
+    return { ok: true, accepted: metrics.length };
+  });
 }

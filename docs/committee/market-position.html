@@ -159,7 +159,7 @@
     <div class="mast-meta">
       <span>Method: <b>desk research + live product verification</b></span>
       <span>Competitors assessed: <b>10</b></span>
-      <span>Gap-closers shipped: <b>12</b> · Enterprise readiness: SSO ✓ tokens ✓ SLA ✓</span>
+      <span>Roadmap: <b>every committed row SHIPPED</b> · remaining items are scope decisions, not gaps</span>
     </div>
   </div>
 </header>
@@ -247,7 +247,7 @@
             <td><span class="cell c-n">NATIVE</span></td><td><span class="cell c-a">PREMIUM</span></td>
             <td><span class="cell c-n">NATIVE</span></td></tr>
           <tr><td>Anomaly detection / forecasting</td>
-            <td class="watcher-col"><span class="cell c-x">NONE³</span></td>
+            <td class="watcher-col"><span class="cell c-n">NATIVE³</span></td>
             <td><span class="cell c-n">WATCHDOG</span></td><td><span class="cell c-p">PARTIAL</span></td>
             <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-x">NONE</span></td>
             <td><span class="cell c-p">PARTIAL</span></td><td><span class="cell c-a">ADD-ON</span></td>
@@ -275,8 +275,7 @@
     </div>
     <p class="matrix-note">¹ Grafana OnCall OSS entered maintenance in 2025 and is archived as of March 2026 —
       self-hosted Grafana users lost their on-call story. &nbsp;² Slack + webhook existed; Microsoft Teams cards and
-      PagerDuty Events v2 shipped this session. &nbsp;³ Deliberate: Watcher leads with <em>deterministic</em>
-      topology correlation, not ML — but baseline dynamic thresholds are on the roadmap. LogicMonitor and
+      PagerDuty Events v2 shipped this session. &nbsp;³ Deterministic by design: median+MAD dynamic thresholds whose every alert states exactly how far off baseline the metric is — no unexplainable ML score. LogicMonitor and
       SolarWinds omitted for width; both are SaaS/enterprise-priced and track Datadog's pattern.</p>
   </section>
 
@@ -325,12 +324,16 @@
         <div class="item"><span class="mark closed">CLOSED</span><div><b>SLA reports, maintenance windows, API tokens, config-as-code.</b>
           <span class="why">Shipped: fleet SLA with CSV export, maintenance windows that suppress pages,
           scoped API tokens, and idempotent JSON config bundles.</span></div></div>
-        <div class="item"><span class="mark hole">P1</span><div><b>Deeper auto-discovery &amp; agents.</b>
-          <span class="why">CIDR discovery exists; L2/LLDP auto-topology and an OS metrics agent trail
-          Zabbix/Checkmk/PRTG.</span></div></div>
-        <div class="item"><span class="mark hole">P2</span><div><b>Anomaly detection, logs, cloud APIs.</b>
-          <span class="why">Deliberately out of the wedge. We say so plainly rather than pretend — full-stack
-          observability buyers should buy Datadog or Grafana.</span></div></div>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>Auto-discovery &amp; agents.</b>
+          <span class="why">Shipped: LLDP auto-topology (the L2 map builds itself), a zero-dependency OS
+          agent, and a push metrics-ingest API for anything else.</span></div></div>
+        <div class="item"><span class="mark closed">CLOSED</span><div><b>Anomaly detection.</b>
+          <span class="why">Shipped as dynamic thresholds — deterministic and explainable.</span></div></div>
+        <div class="item"><span class="mark hole">SCOPE</span><div><b>Logs, APM/tracing, cloud APIs — out of the wedge.</b>
+          <span class="why">A deliberate boundary, stated plainly: full-stack observability buyers should buy
+          Datadog or the Grafana stack. <b>SAML</b> is likewise a decision, not an omission — hand-rolled
+          XML-DSig is a security liability, and OIDC covers ADFS/Entra/Okta/Keycloak; SAML lands only via a
+          vetted library if a strategic deal demands it.</span></div></div>
       </div>
     </div>
   </section>
@@ -393,11 +396,11 @@
         <span class="t">Config-as-code: export/import the whole config as one JSON bundle <span class="why">— GitOps-ready, idempotent</span></span>
         <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p2">P2</span><span class="eff">L</span>
-        <span class="t">L2/LLDP auto-topology + lightweight OS agent <span class="why">— discovery parity with Zabbix/Checkmk</span></span>
-        <span class="st later">PLANNED</span></div>
+        <span class="t">LLDP auto-topology + zero-dependency OS agent + push metrics API <span class="why">— discovery parity with Zabbix/Checkmk</span></span>
+        <span class="st done">SHIPPED</span></div>
       <div class="rm"><span class="pri p2">P2</span><span class="eff">M</span>
-        <span class="t">Statistical dynamic thresholds on Timescale metrics <span class="why">— answers the anomaly question without ML theatre</span></span>
-        <span class="st later">PLANNED</span></div>
+        <span class="t">Dynamic thresholds — median+MAD anomaly detection, every alert explainable <span class="why">— answers the anomaly question without ML theatre</span></span>
+        <span class="st done">SHIPPED</span></div>
     </div>
   </section>
 
