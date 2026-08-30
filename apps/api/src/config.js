@@ -13,6 +13,10 @@ export const config = {
   // Where the web UI is reachable — used to build one-tap mobile ack links
   // in notifications.
   publicBaseUrl: env('PUBLIC_BASE_URL', 'http://localhost:5173'),
+  // When set, the API also serves the built web UI from this directory,
+  // making the whole product reachable as a single origin (no separate web
+  // server or dev proxy needed). Empty in dev, where Vite serves the UI.
+  webDist: env('WEB_DIST', ''),
 
   jwt: {
     secret: env('JWT_SECRET', 'dev-only-secret'),

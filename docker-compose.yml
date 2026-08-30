@@ -78,6 +78,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-watcher}@redis:6379
       NAGIOS_STATUS_FILE: /nagios-var/status.dat
       NAGIOS_COMMAND_FILE: /nagios-var/rw/nagios.cmd
+      # The browser reaches the product through the web service (single origin),
+      # so ack links and CORS point there.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8088}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8088}
     ports:
       - "8080:8080"
     volumes:
@@ -89,6 +93,17 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    # Single browsable origin: serves the built UI and proxies /api + /ws to the
+    # api service. Open http://localhost:8088 to reach the whole product.
+    ports:
+      - "8088:80"
+    depends_on:
+      - api
 
   poller:
     build:

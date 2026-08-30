@@ -2,8 +2,11 @@
  * Application factory — builds and wires the Fastify instance.
  * Split from server.js so tests can build an app without binding a port.
  */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import { REDIS_KEYS } from '@watcher/shared';
 
 import dbPlugin from './plugins/db.js';
@@ -89,6 +92,31 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(oncallRoutes, { prefix: '/api/oncall' });
   await fastify.register(runbookRoutes, { prefix: '/api/runbooks' });
   await fastify.register(statusRoutes, { prefix: '/api/status' });
+
+  // Optionally serve the built web UI from the same origin as the API, so the
+  // whole product is reachable as a single service (no dev proxy). API and
+  // /ws routes are already registered, so they take precedence; anything else
+  // is resolved against the static bundle. A bare directory request ("/") and
+  // any unmatched path fall back to the SPA-less index page.
+  if (config.webDist && existsSync(config.webDist)) {
+    await fastify.register(fastifyStatic, {
+      root: config.webDist,
+      prefix: '/',
+      wildcard: false, // let the notFound handler own unmatched paths
+    });
+    fastify.setNotFoundHandler((request, reply) => {
+      // Never mask a missing API/WS route with an HTML page — that hides bugs
+      // and breaks clients expecting JSON.
+      if (request.raw.url.startsWith('/api/') || request.raw.url.startsWith('/ws')) {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      // A clean path like "/devices" maps to its built "devices.html".
+      const clean = request.raw.url.split('?')[0].replace(/^\/+/, '');
+      const asHtml = clean === '' ? 'index.html' : `${clean}.html`;
+      if (existsSync(join(config.webDist, asHtml))) return reply.sendFile(asHtml);
+      return reply.sendFile('index.html');
+    });
+  }
 
   if (withBackgroundJobs) {
     const streamer = new NagiosStreamer(

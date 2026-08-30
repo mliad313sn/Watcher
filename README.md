@@ -116,13 +116,41 @@ Dashboards support drag-and-drop widget layout persisted per user via the API.
 
 ## Quick start
 
+### Run the whole product (Docker)
+
 ```bash
 cp .env.example .env
-docker compose up -d          # nagios, redis, postgres, timescaledb
+docker compose up -d --build     # nagios, redis, postgres, timescaledb, api, poller, web
+```
+
+Open **http://localhost:8088** — the `web` service serves the built UI and
+reverse-proxies `/api` and `/ws` to the API, so the entire platform is reachable
+from one origin (no CORS, no dev proxy). The API is also exposed directly on
+`:8080` and Nagios on `:8081`.
+
+First run shows an empty-state prompt to **load the demo environment** (a
+13-device fleet with live-looking metrics, alerts, on-call rotation, runbooks
+and status components) so you can explore before wiring real monitoring.
+
+### Develop (hot reload)
+
+```bash
+cp .env.example .env
+docker compose up -d redis postgres timescaledb nagios
 npm install
 npm run dev:api               # Fastify on :8080
-npm run dev:web               # Vite MPA on :5173
+npm run dev:web               # Vite MPA on :5173  ← open this in dev
 npm run dev:poller            # connectors
+```
+
+### Single-origin without nginx
+
+The API can serve the built UI itself — set `WEB_DIST` to the built bundle and
+everything answers on `:8080`:
+
+```bash
+npm run build --workspace apps/web
+WEB_DIST=$PWD/apps/web/dist npm run dev:api   # UI + API on :8080
 ```
 
 Default login (seeded by `infra/sql/postgres/002_seed.sql`): `admin` / `admin`
