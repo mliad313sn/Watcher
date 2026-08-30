@@ -31,7 +31,9 @@ export class NotifierEngine {
     this.cooldownS = opts.cooldownS ?? 300;
     this.fallbackWebhook = opts.fallbackWebhook ?? '';
     this.fetch = opts.fetchImpl ?? fetch;
+    this.sweepMs = opts.sweepMs ?? 30_000;
     this.handler = null;
+    this.sweepTimer = null;
     this._rulesCache = new Map(); // tenantId -> { rules, at }
   }
 
@@ -42,11 +44,61 @@ export class NotifierEngine {
       this.#handle(JSON.parse(message)).catch((err) => this.log.error({ err }, 'notify failed'));
     };
     this.redisSub.on('message', this.handler);
-    this.log.info({ cooldownS: this.cooldownS }, 'notifier engine started');
+
+    // Acknowledgement-SLA escalation: sweep for critical alerts nobody has
+    // acknowledged within their rule window and escalate them (issue: on-call
+    // keystone). This is what makes the tool a safety net, not just a board.
+    this.sweepTimer = setInterval(() => {
+      this.#escalationSweep().catch((err) => this.log.error({ err }, 'escalation sweep failed'));
+    }, this.sweepMs);
+    this.sweepTimer.unref();
+
+    this.log.info({ cooldownS: this.cooldownS, sweepMs: this.sweepMs }, 'notifier engine started');
   }
 
   async stop() {
     if (this.handler) this.redisSub.off('message', this.handler);
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+  }
+
+  /**
+   * Escalate critical alerts still `open` (i.e. unacknowledged) past a rule's
+   * `escalate_after_s`. Each alert escalates at most once (`escalated_at`).
+   */
+  async #escalationSweep() {
+    const { rows: alerts } = await this.pg.query(
+      `SELECT * FROM alerts
+       WHERE status = 'open' AND severity = 'critical' AND escalated_at IS NULL
+       ORDER BY opened_at ASC LIMIT 200`);
+    if (alerts.length === 0) return;
+
+    for (const alert of alerts) {
+      const rules = await this.#rulesFor(alert.tenant_id);
+      const device = alert.device_id ? await this.#device(alert.device_id) : null;
+      const ageS = (Date.now() - new Date(alert.opened_at).getTime()) / 1000;
+
+      const due = rules.filter((r) =>
+        r.escalate_after_s != null
+        && ageS >= r.escalate_after_s
+        && this.#matches(r, alert, device)
+        && Array.isArray(r.escalation_actions) && r.escalation_actions.length > 0);
+      if (due.length === 0) continue;
+
+      // Claim the alert atomically so a second API instance can't double-page.
+      const claim = await this.pg.query(
+        `UPDATE alerts SET escalated_at = now()
+         WHERE id = $1 AND escalated_at IS NULL AND status = 'open' RETURNING id`,
+        [alert.id]);
+      if (claim.rowCount === 0) continue;
+
+      this.log.warn({ alert: alert.id, ageS: Math.round(ageS) },
+        'escalating unacknowledged critical alert');
+      for (const rule of due) {
+        for (const action of rule.escalation_actions) {
+          await this.#dispatch(action, alert, 'escalation', rule.id);
+        }
+      }
+    }
   }
 
   async #handle({ action, alert }) {
@@ -173,7 +225,8 @@ export class NotifierEngine {
     const cached = this._rulesCache.get(tenantId);
     if (cached && Date.now() - cached.at < 30_000) return cached.rules;
     const { rows } = await this.pg.query(
-      'SELECT id, min_severity, match, actions FROM alert_rules WHERE tenant_id = $1 AND enabled',
+      `SELECT id, min_severity, match, actions, escalate_after_s, escalation_actions
+       FROM alert_rules WHERE tenant_id = $1 AND enabled`,
       [tenantId],
     );
     this._rulesCache.set(tenantId, { rules: rows, at: Date.now() });

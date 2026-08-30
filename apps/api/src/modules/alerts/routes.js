@@ -68,4 +68,71 @@ export default async function alertRoutes(fastify) {
     if (rows.length === 0) return reply.code(404).send({ error: 'alert not open or not found' });
     return { alert: rows[0] };
   });
+
+  // ── Notification & escalation rules ────────────────────────────────────────
+  fastify.get('/rules', { preHandler: fastify.requireRole('operator') }, async (request) => {
+    const { rows } = await fastify.pg.query(
+      'SELECT * FROM alert_rules WHERE tenant_id = $1 ORDER BY name', [request.user.tenantId]);
+    return { rules: rows };
+  });
+
+  const actionSchema = {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['type'],
+      properties: {
+        type: { type: 'string', enum: ['webhook', 'slack', 'email', 'log'] },
+        url: { type: 'string' },
+        to: { type: 'string' },
+        gatewayUrl: { type: 'string' },
+      },
+    },
+  };
+
+  fastify.post('/rules', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string', minLength: 1 },
+          minSeverity: { type: 'string', enum: ['critical', 'warning', 'info'], default: 'warning' },
+          match: { type: 'object' },
+          actions: actionSchema,
+          escalateAfterS: { type: 'integer', minimum: 30, maximum: 86400, nullable: true },
+          escalationActions: actionSchema,
+          enabled: { type: 'boolean', default: true },
+        },
+      },
+    },
+    preHandler: fastify.requireRole('admin'),
+  }, async (request, reply) => {
+    const b = request.body;
+    const { rows } = await fastify.pg.query(
+      `INSERT INTO alert_rules
+         (tenant_id, name, min_severity, match, actions, escalate_after_s, escalation_actions, enabled)
+       VALUES ($1, $2, COALESCE($3,'warning')::alert_severity, COALESCE($4,'{}'::jsonb),
+               COALESCE($5,'[]'::jsonb), $6, COALESCE($7,'[]'::jsonb), COALESCE($8, true))
+       RETURNING *`,
+      [request.user.tenantId, b.name, b.minSeverity ?? null,
+       b.match ? JSON.stringify(b.match) : null,
+       b.actions ? JSON.stringify(b.actions) : null,
+       b.escalateAfterS ?? null,
+       b.escalationActions ? JSON.stringify(b.escalationActions) : null,
+       b.enabled],
+    );
+    return reply.code(201).send({ rule: rows[0] });
+  });
+
+  fastify.delete('/rules/:id', {
+    schema: { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } } },
+    preHandler: fastify.requireRole('admin'),
+  }, async (request, reply) => {
+    const { rowCount } = await fastify.pg.query(
+      'DELETE FROM alert_rules WHERE id = $1 AND tenant_id = $2',
+      [request.params.id, request.user.tenantId]);
+    if (rowCount === 0) return reply.code(404).send({ error: 'not found' });
+    return reply.code(204).send();
+  });
 }

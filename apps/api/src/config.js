@@ -53,5 +53,7 @@ export const config = {
     // Optional catch-all webhook so a fresh install pages somewhere even
     // before any alert_rules are configured.
     fallbackWebhook: env('NOTIFY_FALLBACK_WEBHOOK', ''),
+    // How often to sweep for unacknowledged criticals to escalate (ms).
+    sweepMs: Number(env('NOTIFY_SWEEP_MS', 30000)),
   },
 };
