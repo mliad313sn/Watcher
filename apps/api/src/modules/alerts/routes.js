@@ -82,10 +82,11 @@ export default async function alertRoutes(fastify) {
       type: 'object',
       required: ['type'],
       properties: {
-        type: { type: 'string', enum: ['webhook', 'slack', 'email', 'log'] },
+        type: { type: 'string', enum: ['webhook', 'slack', 'email', 'log', 'oncall'] },
         url: { type: 'string' },
         to: { type: 'string' },
         gatewayUrl: { type: 'string' },
+        scheduleId: { type: 'string', format: 'uuid' }, // for type: 'oncall'
       },
     },
   };

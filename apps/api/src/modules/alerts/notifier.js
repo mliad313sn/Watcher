@@ -12,11 +12,13 @@
  *   3. throttles per (tenant, device, check) so a flapping or repeatedly-updated
  *      alert pages once per cooldown, not once per event,
  *   4. dispatches via pluggable channel adapters (webhook, slack, log; email via
- *      an external gateway URL), recording every attempt in `notification_log`.
+ *      an external gateway URL; `oncall` resolves to whoever is on call now),
+ *      recording every attempt in `notification_log`.
  *
  * Recovery notices are sent when a previously-notified alert resolves.
  */
 import { REDIS_KEYS, SEVERITY_WEIGHT } from '@watcher/shared';
+import { currentOnCall } from '../oncall/store.js';
 
 export class NotifierEngine {
   /**
@@ -160,30 +162,28 @@ export class NotifierEngine {
     const title = kind === 'recovery'
       ? `RESOLVED: ${alert.device_name}${alert.check_name ? ' / ' + alert.check_name : ''}`
       : `[${alert.severity.toUpperCase()}] ${alert.device_name}${alert.check_name ? ' / ' + alert.check_name : ''}`;
-    const body = { title, kind, alert };
 
     let status = 'sent';
     let error = null;
+    let channel = action.type;
+    let target = action.url ?? action.to ?? '';
     try {
-      switch (action.type) {
-        case 'webhook':
-          await this.#post(action.url, body);
-          break;
-        case 'slack':
-          await this.#post(action.url, { text: `${title}\n${alert.message}` });
-          break;
-        case 'email':
-          // No SMTP client is bundled; email is delivered via an external
-          // mail-gateway webhook if configured, otherwise flagged for setup.
-          if (action.gatewayUrl) await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: alert.message });
-          else { status = 'skipped'; error = 'email requires action.gatewayUrl (SMTP not bundled)'; }
-          break;
-        case 'log':
-          this.log.warn({ alert: alert.id }, `NOTIFY ${title}: ${alert.message}`);
-          break;
-        default:
-          status = 'skipped';
-          error = `unknown action type: ${action.type}`;
+      if (action.type === 'oncall') {
+        // Resolve whoever is on call for this schedule and page THEM — this is
+        // what turns escalation into a real on-call safety net.
+        channel = 'oncall';
+        const current = await currentOnCall(this.pg, action.scheduleId, alert.tenant_id);
+        if (!current?.onCall) {
+          status = 'skipped'; error = 'no one on call for schedule'; target = action.scheduleId ?? '';
+        } else {
+          const contact = current.onCall.contact ?? { type: 'log' };
+          target = `${current.onCall.name} · ${contact.type ?? 'log'}`;
+          const r = await this.#deliver(contact, title, alert);
+          if (r) { status = r.status; error = r.error; }
+        }
+      } else {
+        const r = await this.#deliver(action, title, alert);
+        if (r) { status = r.status; error = r.error; }
       }
     } catch (err) {
       status = 'failed';
@@ -194,8 +194,31 @@ export class NotifierEngine {
     await this.pg.query(
       `INSERT INTO notification_log (alert_id, rule_id, channel, target, status, error)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [alert.id, ruleId, action.type, action.url ?? action.to ?? '', status, error],
+      [alert.id, ruleId, channel, target, status, error],
     ).catch((err) => this.log.warn({ err }, 'notification_log insert failed'));
+  }
+
+  /** Raw delivery for a concrete contact/action. Returns {status,error} for
+   *  non-fatal outcomes, undefined when sent, throws on transport failure. */
+  async #deliver(action, title, alert) {
+    switch (action.type) {
+      case 'webhook':
+        await this.#post(action.url, { title, alert });
+        return;
+      case 'slack':
+        await this.#post(action.url, { text: `${title}\n${alert.message}` });
+        return;
+      case 'email':
+        // No SMTP client is bundled; email goes via an external mail-gateway
+        // webhook if configured, otherwise it's flagged for setup.
+        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: alert.message }); return; }
+        return { status: 'skipped', error: 'email requires action.gatewayUrl (SMTP not bundled)' };
+      case 'log':
+        this.log.warn({ alert: alert.id }, `NOTIFY ${title}: ${alert.message}`);
+        return;
+      default:
+        return { status: 'skipped', error: `unknown action type: ${action.type}` };
+    }
   }
 
   async #post(url, payload) {

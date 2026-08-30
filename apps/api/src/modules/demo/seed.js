@@ -84,12 +84,27 @@ export async function seedDemo({ pg, tsdb, redis, tenantId, log = console }) {
   await insertAlert(pg, tenantId, idByName.get('dist-sw-nyc-01'), 'dist-sw-nyc-01', 'BGP Session',
     'warning', 'open', 'WARNING - BGP flapped 3× in 10m (peer 10.0.4.254)', { flapping: true, occurrences: 6 });
 
-  // ── 4. A demo routing + escalation rule (log adapter — no external calls) ──
+  // ── 4. On-call rotation + a routing/escalation rule that pages it ─────────
+  // A weekly NOC rotation of three responders (log contacts — no external
+  // calls in the demo), so escalation resolves to "whoever is on call now".
+  await pg.query(`DELETE FROM oncall_schedules WHERE tenant_id = $1 AND name = 'Demo — NOC rotation'`, [tenantId]);
+  const sched = await pg.query(
+    `INSERT INTO oncall_schedules (tenant_id, name, rotation_interval_s, handoff_at)
+     VALUES ($1, 'Demo — NOC rotation', 604800, now() - interval '2 days') RETURNING id`, [tenantId]);
+  const scheduleId = sched.rows[0].id;
+  const responders = ['Dana (NOC lead)', 'Sam (on-call)', 'Amara (network)'];
+  for (let i = 0; i < responders.length; i++) {
+    await pg.query(
+      `INSERT INTO oncall_participants (schedule_id, position, name, contact)
+       VALUES ($1, $2, $3, '{"type":"log"}'::jsonb)`, [scheduleId, i, responders[i]]);
+  }
+
   await pg.query(
     `INSERT INTO alert_rules (tenant_id, name, min_severity, actions, escalate_after_s, escalation_actions)
      VALUES ($1, 'Demo — critical routing', 'critical',
-             '[{"type":"log"}]'::jsonb, 900, '[{"type":"log"}]'::jsonb)
-     ON CONFLICT DO NOTHING`, [tenantId]);
+             '[{"type":"log"}]'::jsonb, 900, $2::jsonb)
+     ON CONFLICT DO NOTHING`,
+    [tenantId, JSON.stringify([{ type: 'oncall', scheduleId }])]);
 
   // ── 5. Metrics + availability history (TimescaleDB, best-effort) ──────────
   if (tsdb) {
@@ -179,6 +194,7 @@ export async function clearDemo({ pg, tsdb, redis, tenantId, log = console }) {
 
   await clearDemoAlerts(pg, tenantId);
   await pg.query(`DELETE FROM alert_rules WHERE tenant_id = $1 AND name LIKE 'Demo — %'`, [tenantId]);
+  await pg.query(`DELETE FROM oncall_schedules WHERE tenant_id = $1 AND name LIKE 'Demo — %'`, [tenantId]);
 
   if (tsdb && ids.length) {
     await tsdb.query('DELETE FROM metrics WHERE device_id = ANY($1)', [ids]).catch(() => {});

@@ -42,6 +42,40 @@
         </table>
       </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <h2 style="margin-bottom:2px">On-call schedules</h2>
+          <div class="dim" style="font-size:13px">Escalations page <em>whoever is on call now</em> — rotations hand off automatically.</div>
+        </div>
+      </div>
+      <div id="oncall-list" style="margin:16px 0"></div>
+
+      <details style="border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--text-dim)">＋ New rotation</summary>
+        <form id="oncall-form" style="margin-top:12px;max-width:560px">
+          <div class="row" style="gap:12px;align-items:flex-end">
+            <div class="grow">
+              <label for="oc-name">Schedule name</label>
+              <input id="oc-name" placeholder="NOC rotation" required />
+            </div>
+            <div>
+              <label for="oc-interval">Rotation</label>
+              <select id="oc-interval" style="width:150px">
+                <option value="86400">Daily</option>
+                <option value="604800" selected>Weekly</option>
+                <option value="1209600">Fortnightly</option>
+              </select>
+            </div>
+          </div>
+          <label for="oc-people">Responders (one per line, in rotation order)</label>
+          <textarea id="oc-people" rows="3" placeholder="Dana&#10;Sam&#10;Amara" style="font-family:var(--mono);font-size:13px" required></textarea>
+          <div id="oc-msg" style="min-height:18px;font-size:12px;margin-top:8px"></div>
+          <button class="btn primary">Create rotation</button>
+        </form>
+      </details>
+    </div>
   </w-shell>
   <script type="module" src="/src/pages/settings.js"></script>
 </body>
