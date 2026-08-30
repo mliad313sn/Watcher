@@ -13,7 +13,18 @@
         <h1>Network Discovery &amp; Topology</h1>
         <div class="sub">Hierarchy from device parents + discovered L2/L3 adjacency. Node color = live host state.</div>
       </div>
+      <div class="topo-legend" role="list" aria-label="Node colour legend">
+        <span role="listitem"><i class="dot" style="background:var(--accent)"></i>Up</span>
+        <span role="listitem"><i class="dot" style="background:var(--critical)"></i>Down</span>
+        <span role="listitem"><i class="dot" style="background:var(--warning)"></i>Unreachable</span>
+        <span role="listitem"><i class="dot" style="background:var(--unknown)"></i>Unknown</span>
+      </div>
     </div>
+    <style>
+      .topo-legend { display:flex; gap:16px; align-items:center; font-size:12px; color:var(--text-dim); }
+      .topo-legend span { display:inline-flex; align-items:center; gap:6px; }
+      .topo-legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    </style>
     <div class="card" style="padding:8px">
       <svg id="map" style="width:100%;height:calc(100vh - 220px);min-height:420px"></svg>
     </div>

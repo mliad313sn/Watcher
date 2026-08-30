@@ -158,6 +158,16 @@ async function refreshDemoBanner() {
 await refresh();
 setInterval(() => refresh().catch(() => {}), 30_000);
 
+// Prime the live feed with recent history so it reads as alive on first paint
+// instead of "awaiting telemetry"; the WebSocket then prepends new events.
+async function primeFeed() {
+  try {
+    const { events } = await api('/nagios/events/recent?limit=60');
+    if (events?.length) feed.events = events;
+  } catch { /* no history yet — the empty state is correct */ }
+}
+await primeFeed();
+
 liveEvents(['state', 'alerts'], (channel, data) => {
   if (channel === 'state') {
     feed.push({

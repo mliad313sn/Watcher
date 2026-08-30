@@ -8,6 +8,7 @@
  *   <w-shell active="alerts" title="Alerts"> ...page content... </w-shell>
  */
 import { escapeHtml, escapeAttr } from './escape.js';
+import { openPalette, installShortcuts } from './palette.js';
 
 const NAV = [
   { id: 'dashboard', href: '/index.html', label: 'Global View', icon: 'language' },
@@ -27,6 +28,7 @@ export class WShell extends HTMLElement {
 
     this.innerHTML = `
       <div class="shell">
+        <a href="#w-main" class="w-skip">Skip to main content</a>
         <aside class="w-sidebar">
           <div class="w-brand">
             <div class="w-brand-mark">
@@ -56,10 +58,12 @@ export class WShell extends HTMLElement {
           <header class="w-topbar">
             <strong class="w-topbar-title">${escapeHtml(title)}</strong>
             <div class="grow" style="display:flex;justify-content:center">
-              <div class="w-search">
+              <button class="w-search" id="w-search-btn" type="button"
+                      aria-label="Open command palette (Ctrl or Cmd + K)">
                 <span class="material-symbols-outlined">search</span>
-                <input id="w-search-input" type="text" placeholder="Search resources..." />
-              </div>
+                <span class="w-search-ph">Search or jump to…</span>
+                <kbd class="w-search-kbd mono">⌘K</kbd>
+              </button>
             </div>
             <div class="row" style="gap:16px">
               <span class="status-pill" id="w-status-pill">
@@ -68,7 +72,7 @@ export class WShell extends HTMLElement {
               <div class="row" style="gap:4px" id="w-health"></div>
             </div>
           </header>
-          <div class="content">${content}</div>
+          <main class="content" id="w-main" role="main" tabindex="-1">${content}</main>
         </div>
       </div>`;
 
@@ -79,14 +83,13 @@ export class WShell extends HTMLElement {
       location.href = '/login.html';
     });
 
-    this.querySelector('#w-search-input')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.value.trim()) {
-        location.href = `/devices.html?q=${encodeURIComponent(e.target.value.trim())}`;
-      }
-    });
+    this.querySelector('#w-search-btn')?.addEventListener('click', () => openPalette());
 
     this.#injectChromeStyles();
     this.#autoHealth();
+    // Global keyboard shortcuts (⌘K palette, "/", g-then-key nav, "?") — install
+    // once per document even though every page mounts a shell.
+    if (!window.__wShortcuts) { window.__wShortcuts = true; installShortcuts(); }
   }
 
   /**
@@ -187,11 +190,28 @@ export class WShell extends HTMLElement {
         background: var(--bg-raised); position: sticky; top: 0; z-index: 20; }
       .w-topbar-title { font-size: 15px; font-weight: 600; color: var(--text-head);
         white-space: nowrap; }
-      .w-search { position: relative; width: 280px; }
-      .w-search .material-symbols-outlined { position: absolute; left: 8px; top: 6px;
-        font-size: 18px; color: var(--text-faint); pointer-events: none; }
-      .w-search input { padding: 5px 10px 5px 30px; font-family: var(--mono);
-        font-size: 13px; background: var(--bg-high); }
+      .w-search { display: flex; align-items: center; gap: 8px; width: 320px;
+        padding: 5px 8px 5px 10px; background: var(--bg-high); color: var(--text-faint);
+        border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: text;
+        text-align: left; transition: border-color .12s, color .12s; }
+      .w-search:hover { border-color: var(--border-strong); color: var(--text-dim); }
+      .w-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .w-search .material-symbols-outlined { font-size: 18px; }
+      .w-search-ph { flex: 1; font-size: 13px; }
+      .w-search-kbd { font-size: 11px; color: var(--text-faint); background: var(--bg-low);
+        border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+      .w-skip { position: absolute; left: 8px; top: -40px; z-index: 100;
+        background: var(--accent); color: #061024; padding: 8px 14px; border-radius: 0 0 6px 6px;
+        font-size: 13px; font-weight: 600; transition: top .12s; }
+      .w-skip:focus { top: 0; text-decoration: none; }
+      /* Visible keyboard-focus ring everywhere (keyboard users, WCAG 2.4.7). */
+      a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+      textarea:focus-visible, [tabindex]:focus-visible {
+        outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+      #w-main:focus { outline: none; }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+      }
     `;
     document.head.appendChild(style);
   }

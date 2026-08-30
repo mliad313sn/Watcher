@@ -199,7 +199,12 @@ export class NagiosStreamer {
     }
 
     // 2) Evict objects that disappeared from Nagios (deleted host/service).
-    const known = await this.redis.smembers(REDIS_KEYS.stateIndex);
+    // Guard: a parse with zero objects means Nagios isn't wired yet (status.dat
+    // has only programstatus) or the file was caught mid-rewrite — NOT that the
+    // whole estate vanished. Evicting on an empty parse would wipe demo/seeded
+    // state and blank every dashboard, so we skip reconciliation-by-absence
+    // entirely until we see at least one real object.
+    const known = parsed.length > 0 ? await this.redis.smembers(REDIS_KEYS.stateIndex) : [];
     const stale = known.filter((k) => !seen.has(k));
     if (stale.length) {
       writePipe.srem(REDIS_KEYS.stateIndex, ...stale);

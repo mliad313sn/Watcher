@@ -1,5 +1,5 @@
 import '@watcher/ui';
-import { escapeHtml as esc, escapeAttr } from '@watcher/ui';
+import { escapeHtml as esc, escapeAttr, toast, timeAgo } from '@watcher/ui';
 import { api, requireAuth, liveEvents } from '../lib/api.js';
 
 requireAuth();
@@ -28,10 +28,10 @@ async function load() {
           ${a.flapping ? '<span class="chip warning" style="margin-left:6px">flapping</span>' : ''}</td>
       <td class="dim" style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.message)}</td>
       <td class="num">${a.occurrences}</td>
-      <td class="dim mono" style="white-space:nowrap">${new Date(a.opened_at).toLocaleString()}</td>
+      <td class="dim mono" style="white-space:nowrap" title="${escapeAttr(new Date(a.opened_at).toLocaleString())}">${timeAgo(a.opened_at)} ago</td>
       <td style="white-space:nowrap">
-        <button class="btn" data-rb="${escapeAttr(a.id)}" title="Runbook" style="padding:4px 8px">
-          <span class="material-symbols-outlined" style="font-size:16px">menu_book</span></button>
+        <button class="btn" data-rb="${escapeAttr(a.id)}" title="Runbook" aria-label="Show runbook for ${escapeAttr(a.device_name)}" style="padding:4px 8px">
+          <span class="material-symbols-outlined" style="font-size:16px" aria-hidden="true">menu_book</span></button>
         ${a.status === 'open' ? `<button class="btn" data-ack="${escapeAttr(a.id)}" data-host="${escapeAttr(a.device_name)}" data-svc="${escapeAttr(a.check_name)}">Ack</button>` : ''}
       </td>
     </tr>
@@ -45,13 +45,20 @@ async function load() {
     btn.addEventListener('click', async () => {
       const comment = prompt('Acknowledgement comment:');
       if (!comment) return;
-      // Ack in Watcher and mirror into Nagios so notifications stop there too.
-      await api(`/alerts/${btn.dataset.ack}/ack`, { method: 'POST', body: { comment } });
-      await api('/nagios/ack', {
-        method: 'POST',
-        body: { host: btn.dataset.host, service: btn.dataset.svc || undefined, comment },
-      }).catch(() => {});
-      load();
+      btn.disabled = true;
+      try {
+        // Ack in Watcher and mirror into Nagios so notifications stop there too.
+        await api(`/alerts/${btn.dataset.ack}/ack`, { method: 'POST', body: { comment } });
+        await api('/nagios/ack', {
+          method: 'POST',
+          body: { host: btn.dataset.host, service: btn.dataset.svc || undefined, comment },
+        }).catch(() => {});
+        toast(`Acknowledged ${btn.dataset.host}${btn.dataset.svc ? ' / ' + btn.dataset.svc : ''}`, { type: 'success' });
+        load();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Could not acknowledge: ${err.message}`, { type: 'error' });
+      }
     });
   });
 }

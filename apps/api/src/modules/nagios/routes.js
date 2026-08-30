@@ -76,6 +76,63 @@ export default async function nagiosRoutes(fastify, opts) {
     return summary;
   });
 
+  /**
+   * Recent event history so the live feed is never blank when there IS a story
+   * to tell (time-to-value / "is this thing on?"). Merges the last state
+   * transitions (from state_changes, scoped to the tenant's devices) with
+   * recent alert transitions, newest first. The WebSocket stream then prepends
+   * live events on top of this baseline.
+   */
+  fastify.get('/events/recent', { preHandler: fastify.requireRole('viewer') }, async (request) => {
+    const tenantId = request.user.tenantId;
+    const limit = Math.min(Number(request.query?.limit) || 60, 200);
+    const HOST = ['up', 'down', 'unreachable'];
+    const SVC = ['ok', 'warning', 'critical', 'unknown'];
+    const HOST_NAME = ['UP', 'DOWN', 'UNREACHABLE'];
+    const SVC_NAME = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN'];
+
+    const [changes, alerts] = await Promise.all([
+      fastify.pg.query(
+        `SELECT sc.time, sc.device_name, sc.check_name, sc.to_state, sc.output
+           FROM state_changes sc
+           JOIN devices d ON d.name = sc.device_name AND d.tenant_id = $1
+          ORDER BY sc.time DESC
+          LIMIT $2`, [tenantId, limit]),
+      fastify.pg.query(
+        `SELECT device_name, check_name, severity, status, message, updated_at
+           FROM alerts
+          WHERE tenant_id = $1
+          ORDER BY updated_at DESC
+          LIMIT $2`, [tenantId, limit]),
+    ]);
+
+    const events = [];
+    for (const r of changes.rows) {
+      const isHost = !r.check_name;
+      const cls = isHost ? (HOST[r.to_state] ?? 'unknown') : (SVC[r.to_state] ?? 'unknown');
+      const stateName = isHost ? (HOST_NAME[r.to_state] ?? '?') : (SVC_NAME[r.to_state] ?? '?');
+      events.push({
+        ts: new Date(r.time).getTime(),
+        chipClass: cls,
+        severity: cls,
+        title: `${r.device_name}${r.check_name ? ' / ' + r.check_name : ''} → ${stateName}`,
+        detail: r.output || '',
+      });
+    }
+    for (const a of alerts.rows) {
+      const resolved = a.status === 'resolved';
+      events.push({
+        ts: new Date(a.updated_at).getTime(),
+        chipClass: resolved ? 'ok' : (a.status === 'suppressed' ? 'suppressed' : a.severity),
+        severity: a.severity,
+        title: `alert ${a.status}: ${a.device_name}${a.check_name ? ' / ' + a.check_name : ''}`,
+        detail: a.message || '',
+      });
+    }
+    events.sort((x, y) => y.ts - x.ts);
+    return { events: events.slice(0, limit) };
+  });
+
   const ackSchema = {
     body: {
       type: 'object',

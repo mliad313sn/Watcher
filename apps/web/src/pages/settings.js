@@ -1,5 +1,5 @@
 import '@watcher/ui';
-import { escapeHtml as esc } from '@watcher/ui';
+import { escapeHtml as esc, toast } from '@watcher/ui';
 import { api, requireAuth } from '../lib/api.js';
 
 requireAuth();
@@ -98,7 +98,8 @@ async function loadOncall() {
 
   ocList.querySelectorAll('[data-del-sched]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('Delete this on-call rotation?')) return;
-    await api(`/oncall/schedules/${b.dataset.delSched}`, { method: 'DELETE' }).catch(() => {});
+    try { await api(`/oncall/schedules/${b.dataset.delSched}`, { method: 'DELETE' }); toast('Rotation deleted', { type: 'success' }); }
+    catch (err) { toast(`Could not delete: ${err.message}`, { type: 'error' }); }
     loadOncall();
   }));
 }
@@ -163,7 +164,9 @@ async function loadRunbooks() {
       </div>
     </div>`).join('');
   rbList.querySelectorAll('[data-del-rb]').forEach((b) => b.addEventListener('click', async () => {
-    await api(`/runbooks/${b.dataset.delRb}`, { method: 'DELETE' }).catch(() => {});
+    if (!confirm('Delete this runbook?')) return;
+    try { await api(`/runbooks/${b.dataset.delRb}`, { method: 'DELETE' }); toast('Runbook deleted', { type: 'success' }); }
+    catch (err) { toast(`Could not delete: ${err.message}`, { type: 'error' }); }
     loadRunbooks();
   }));
 }
@@ -215,7 +218,9 @@ async function loadComponents() {
       <button class="btn danger" data-del-sc="${esc(c.id)}" style="font-size:11px;padding:3px 10px">Remove</button>
     </div>`).join('');
   scList.querySelectorAll('[data-del-sc]').forEach((b) => b.addEventListener('click', async () => {
-    await api(`/status/components/${b.dataset.delSc}`, { method: 'DELETE' }).catch(() => {});
+    if (!confirm('Remove this component?')) return;
+    try { await api(`/status/components/${b.dataset.delSc}`, { method: 'DELETE' }); toast('Component removed', { type: 'success' }); }
+    catch (err) { toast(`Could not remove: ${err.message}`, { type: 'error' }); }
     loadComponents();
   }));
 }
