@@ -260,6 +260,32 @@ export default async function metricsRoutes(fastify) {
   });
 
   /**
+   * Fleet exporter in Prometheus exposition format — point a Prometheus
+   * scrape job (with an X-API-Token viewer credential) at this and the whole
+   * estate's latest gauges land in any Grafana. Watcher becomes a data
+   * SOURCE for the observability stack, not a silo.
+   */
+  fastify.get('/prometheus', { preHandler: fastify.requireRole('viewer') }, async (request, reply) => {
+    const { rows } = await fastify.tsdb.query(
+      `SELECT DISTINCT ON (m.device_id, m.metric, m.instance)
+              m.metric, m.instance, m.value, d.name AS device
+       FROM metrics m JOIN devices d ON d.id = m.device_id AND d.tenant_id = $1
+       WHERE m.time >= now() - interval '15 minutes'
+       ORDER BY m.device_id, m.metric, m.instance, m.time DESC
+       LIMIT 5000`,
+      [request.user.tenantId]);
+    const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const lines = [
+      '# HELP watcher_fleet_metric Latest value per device/metric/instance from Watcher.',
+      '# TYPE watcher_fleet_metric gauge',
+      ...rows.map((r) =>
+        `watcher_fleet_metric{device="${esc(r.device)}",metric="${esc(r.metric)}"${r.instance ? `,instance="${esc(r.instance)}"` : ''}} ${Number(r.value)}`),
+    ];
+    return reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+      .send(lines.join('\n') + '\n');
+  });
+
+  /**
    * Push ingest for agents and integrations (pairs with scoped API tokens:
    * send X-API-Token). The device is addressed by NAME so an agent needs no
    * UUID knowledge; it must already exist in the caller's tenant inventory.

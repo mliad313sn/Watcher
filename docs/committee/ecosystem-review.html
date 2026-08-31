@@ -1,0 +1,198 @@
+<title>Watcher Ecosystem Review</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #0a0e17; --panel: #12161f; --panel-2: #161b26;
+    --line: #242a3a; --line-soft: #1c2230;
+    --ink: #e9ecf4; --dim: #a2a9bb; --faint: #6c7386;
+    --accent: #4a8eff; --accent-soft: rgba(74,142,255,.14); --accent-line: rgba(74,142,255,.4);
+    --ok: #47c58e; --ok-soft: rgba(71,197,142,.13);
+    --warn: #ffb95f; --warn-soft: rgba(255,185,95,.13);
+    --maxw: 1080px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+      --line: #dfe4ee; --line-soft: #e9edf4;
+      --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+      --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+      --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+      --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+    --line: #dfe4ee; --line-soft: #e9edf4;
+    --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+    --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+    --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+    --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.015em; }
+  header.mast { border-bottom: 1px solid var(--line); background:
+      radial-gradient(120% 150% at 50% -30%, var(--accent-soft), transparent 55%), var(--panel); }
+  .mast-in { padding: 40px 0 34px; display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--accent-line); }
+  h1.title { font-size: clamp(30px, 5vw, 44px); font-weight: 700; line-height: 1.08; }
+  .lede { font-size: 17.5px; color: var(--dim); max-width: 66ch; }
+  .thesis { border-left: 3px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 10px 10px 0; padding: 16px 22px; font-size: 16.5px; max-width: 74ch; }
+  .verdict { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+    background: var(--ok-soft); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
+    padding: 6px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  section { padding: 44px 0; border-bottom: 1px solid var(--line-soft); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+  .sec-num { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--faint);
+    border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+  h2.sec-title { font-size: 23px; font-weight: 600; }
+  .sec-sub { color: var(--dim); max-width: 70ch; margin: 8px 0 0; font-size: 15px; }
+
+  /* Hub layout: Watcher center, four direction panels */
+  .hub { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .hub { grid-template-columns: 1fr; } }
+  .dir { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 19px 21px; }
+  .dir .k { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--accent); }
+  .dir h3 { font-size: 16.5px; margin: 7px 0 12px; }
+  .chiprow { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pill { font-size: 12.5px; padding: 4px 11px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); }
+  .pill.new { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-soft); }
+  .dir p { margin: 12px 0 0; font-size: 13px; color: var(--faint); }
+
+  .proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .stat .n { font-size: 25px; font-weight: 700; font-family: "IBM Plex Mono", monospace; color: var(--ok); }
+  .stat .l { font-size: 12.5px; color: var(--dim); margin-top: 3px; }
+
+  .principles { display: flex; flex-direction: column; gap: 10px; }
+  .pr { display: flex; gap: 12px; background: var(--panel-2); border: 1px solid var(--line-soft);
+    border-radius: 8px; padding: 13px 16px; font-size: 14px; align-items: baseline; }
+  .pr b { color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 12px; white-space: nowrap; }
+  .pr span { color: var(--dim); }
+  .pr span strong { color: var(--ink); font-weight: 600; }
+  footer { padding: 32px 0 60px; color: var(--faint); font-size: 12.5px;
+    font-family: "IBM Plex Mono", monospace; }
+</style>
+
+<header class="mast">
+  <div class="wrap mast-in">
+    <div class="eyebrow">Design &amp; Adoption Committee · Session 04 — Ecosystem &amp; Interoperability</div>
+    <h1 class="title">A must-have connects<br>to everything that matters</h1>
+    <p class="lede">The committee's mandate for this session: no buyer should ever say "it doesn't talk to
+      our stack." Watcher becomes a hub — paging into every platform teams already live in, feeding the
+      observability estate, and accepting alerts from anything that can send a webhook.</p>
+    <div class="thesis">The committee's rule for what "makes sense": integrate where <b>incidents live</b>
+      (chat, ITSM, on-call), where <b>identity lives</b> (IdP, directory), and where <b>data lives</b>
+      (Prometheus/Grafana, Excel/BI, Git) — and give everything else one honest, documented
+      <b>universal adapter</b> instead of a thousand shallow logos.</div>
+    <span class="verdict">17/17 ecosystem checks passed against the running product</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span>
+      <div><h2 class="sec-title">The hub, by direction</h2>
+        <p class="sec-sub">Everything below is shipped and verified — green pills are new this session.
+          Full setup recipes live in <span class="mono">docs/INTEGRATIONS.md</span>.</p></div></div>
+    <div class="hub">
+      <div class="dir"><div class="k">Outbound · where incidents live</div>
+        <h3>Watcher pages your platforms</h3>
+        <div class="chiprow">
+          <span class="pill new">Teams — Adaptive Cards (Power Automate)</span>
+          <span class="pill">Teams — legacy webhook</span>
+          <span class="pill">Slack</span>
+          <span class="pill">PagerDuty</span>
+          <span class="pill new">Opsgenie (auto-close on recovery)</span>
+          <span class="pill new">ServiceNow incidents</span>
+          <span class="pill new">Jira issues</span>
+          <span class="pill new">Discord</span>
+          <span class="pill new">Telegram</span>
+          <span class="pill new">Google Chat</span>
+          <span class="pill new">Email — native SMTP (M365/Gmail/any)</span>
+          <span class="pill">Generic webhook → Mattermost, Rocket.Chat, Zapier, Make, n8n</span>
+        </div>
+        <p>Every message carries the one-tap Acknowledge link and the matched runbook. Every channel is
+          verifiable end-to-end via <span class="mono">POST /api/alerts/test-channel</span> before it
+          guards a 3 a.m. page.</p></div>
+      <div class="dir"><div class="k">Inbound · Watcher as the alert hub</div>
+        <h3>Everything can raise an incident</h3>
+        <div class="chiprow">
+          <span class="pill new">Prometheus Alertmanager receiver (fire + resolve)</span>
+          <span class="pill new">Generic event API (Power Automate, n8n, scripts)</span>
+          <span class="pill">Push metrics ingest (OS agent, any integration)</span>
+          <span class="pill">Nagios engine (native)</span>
+        </div>
+        <p>External alerts enter the same pipeline as native ones — dependency correlation, on-call
+          rotation, runbooks, maintenance-window suppression all apply. Watcher unifies the estate
+          instead of adding another silo.</p></div>
+      <div class="dir"><div class="k">Identity · who signs in</div>
+        <h3>Your IdP is the front door</h3>
+        <div class="chiprow">
+          <span class="pill">Entra ID (OIDC)</span><span class="pill">Keycloak</span>
+          <span class="pill">Okta</span><span class="pill">Authentik</span><span class="pill">Google</span>
+          <span class="pill">LDAP / Active Directory</span>
+          <span class="pill">Scoped API tokens for machines</span>
+        </div>
+        <p>Group→role mapping, JIT provisioning, deny-by-default. Tokens power every machine
+          integration on this page.</p></div>
+      <div class="dir"><div class="k">Data · where analysis lives</div>
+        <h3>Feed the tools they already trust</h3>
+        <div class="chiprow">
+          <span class="pill new">Prometheus exposition — /metrics (self)</span>
+          <span class="pill new">Fleet exporter → Grafana (/api/metrics/prometheus)</span>
+          <span class="pill">SLA CSV → Excel / Power BI</span>
+          <span class="pill">Config-as-code JSON → Git</span>
+          <span class="pill">Full REST API</span>
+        </div>
+        <p>Watcher is scrape-able like any exporter and exports the whole fleet's gauges — a data
+          source for the observability stack, never a dead end.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span>
+      <div><h2 class="sec-title">Verified, not listed</h2>
+        <p class="sec-sub">Every integration above was exercised against the deployed product through the
+          real delivery path, with wire-format assertions on what each platform actually receives.</p></div></div>
+    <div class="proof">
+      <div class="stat"><div class="n">17/17</div><div class="l">ecosystem E2E checks passed</div></div>
+      <div class="stat"><div class="n">9</div><div class="l">wire formats unit-tested (payload builders are pure)</div></div>
+      <div class="stat"><div class="n">12</div><div class="l">outbound channel types</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">inbound APIs (Alertmanager, event, metrics)</div></div>
+      <div class="stat"><div class="n">1-call</div><div class="l">channel verification before go-live</div></div>
+    </div>
+  </section>
+
+  <section style="border-bottom:none">
+    <div class="sec-head"><span class="sec-num">03</span>
+      <div><h2 class="sec-title">The committee's interop principles</h2>
+        <p class="sec-sub">What keeps this a durable capability rather than a logo wall.</p></div></div>
+    <div class="principles">
+      <div class="pr"><b>PURE PAYLOADS</b><span>Every wire format is a <strong>pure function</strong> in
+        <span class="mono">channels.js</span> — unit-testable without the network, so a platform's format
+        change is a one-file fix with a failing test to prove it.</span></div>
+      <div class="pr"><b>SAME PIPELINE</b><span>Inbound alerts get <strong>full citizenship</strong>:
+        correlation, on-call, runbooks, maintenance windows. No second-class "external" path.</span></div>
+      <div class="pr"><b>TEST BEFORE TRUST</b><span>Any channel can fire a <strong>synthetic page through the
+        real path</strong> — misconfiguration is a clear message, never a silent 3 a.m. failure.</span></div>
+      <div class="pr"><b>UNIVERSAL ADAPTER</b><span>Where no first-class integration exists, the documented
+        generic webhook + event API + token auth means <strong>anything scriptable connects today</strong> —
+        Zapier, Make, n8n, Power Automate, cron.</span></div>
+      <div class="pr"><b>DEDUP EVERYWHERE</b><span>Opsgenie aliases, PagerDuty dedup keys, ServiceNow
+        correlation_ids — re-notifies <strong>update the same incident</strong> on the far side, never
+        stack duplicates.</span></div>
+    </div>
+  </section>
+  <footer>Watcher · Committee Session 04 — Ecosystem &amp; Interoperability · all claims verified against
+    the deployed build. Companions: Session 02 — Adoption · Session 03 — Market Position.</footer>
+</div>

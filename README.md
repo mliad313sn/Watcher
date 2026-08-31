@@ -21,6 +21,12 @@ map builds itself from what switches report), a **zero-dependency OS agent**
 token), a push **metrics ingest API** for any integration, and an
 **installable PWA** so the console lives on a phone home screen.
 
+**Ecosystem**: 12 outbound channels (Teams Adaptive Cards via Power Automate,
+Slack, PagerDuty, Opsgenie, ServiceNow, Jira, Discord, Telegram, Google Chat,
+native SMTP email, generic webhook), a Prometheus Alertmanager receiver and
+generic event API inbound, and Prometheus exposition outbound — see
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │

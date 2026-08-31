@@ -95,5 +95,14 @@ export const config = {
     fallbackWebhook: env('NOTIFY_FALLBACK_WEBHOOK', ''),
     // How often to sweep for unacknowledged criticals to escalate (ms).
     sweepMs: Number(env('NOTIFY_SWEEP_MS', 30000)),
+    // Global SMTP relay for email actions (action-level smtp overrides).
+    smtp: {
+      host: env('SMTP_HOST', ''),
+      port: Number(env('SMTP_PORT', 587)),
+      secure: env('SMTP_SECURE', 'false') === 'true',
+      user: env('SMTP_USER', ''),
+      password: env('SMTP_PASSWORD', ''),
+      from: env('SMTP_FROM', 'watcher@localhost'),
+    },
   },
 };

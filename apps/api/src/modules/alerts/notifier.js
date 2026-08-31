@@ -21,6 +21,7 @@ import { REDIS_KEYS, SEVERITY_WEIGHT } from '@watcher/shared';
 import { currentOnCall } from '../oncall/store.js';
 import { runbookForAlert } from '../runbooks/store.js';
 import { activeWindowFor } from '../maintenance/routes.js';
+import * as channels from './channels.js';
 
 export class NotifierEngine {
   /**
@@ -40,6 +41,8 @@ export class NotifierEngine {
     // an ack link in every page, so the responder can ack from their phone.
     this.ackBaseUrl = opts.ackBaseUrl ?? '';
     this.signAckToken = opts.signAckToken ?? null;
+    // Global SMTP relay (SMTP_* env) so email actions only need a `to`.
+    this.smtp = opts.smtp?.host ? opts.smtp : null;
     this.handler = null;
     this.sweepTimer = null;
     this._rulesCache = new Map(); // tenantId -> { rules, at }
@@ -205,7 +208,7 @@ export class NotifierEngine {
       // Enrich the page with remediation if a runbook applies.
       try { runbook = await runbookForAlert(this.pg, alert); } catch { /* best-effort */ }
     }
-    const extra = { ackUrl, runbook };
+    const extra = { ackUrl, runbook, kind };
 
     let status = 'sent';
     let error = null;
@@ -244,12 +247,34 @@ export class NotifierEngine {
 
   /** Raw delivery for a concrete contact/action. Returns {status,error} for
    *  non-fatal outcomes, undefined when sent, throws on transport failure. */
+  /**
+   * Fire a synthetic notification through the REAL delivery path so an admin
+   * can verify a channel before trusting it with a 3 a.m. page.
+   * @returns {{ok: boolean, status: string, error: string|null}}
+   */
+  async testChannel(action) {
+    const alert = {
+      id: `test-${Date.now()}`, tenant_id: null,
+      device_name: 'watcher-test', check_name: 'channel-check',
+      severity: 'warning',
+      message: 'Test notification from Watcher — this channel is wired correctly.',
+    };
+    try {
+      const r = await this.#deliver(action, 'TEST: Watcher channel check', alert, { kind: 'alert' });
+      if (r?.status) return { ok: false, status: r.status, error: r.error ?? null };
+      return { ok: true, status: 'sent', error: null };
+    } catch (err) {
+      return { ok: false, status: 'failed', error: String(err?.message ?? err) };
+    }
+  }
+
   async #deliver(action, title, alert, extra = {}) {
-    const { ackUrl = null, runbook = null } = extra;
+    const { ackUrl = null, runbook = null, kind = 'alert' } = extra;
     const rbLink = runbook?.links?.[0]?.url;
     const ackLine = ackUrl ? `\nAcknowledge: ${ackUrl}` : '';
     const rbLine = runbook ? `\nRunbook: ${runbook.name}${rbLink ? ' — ' + rbLink : ''}` : '';
     const rbSummary = runbook ? { name: runbook.name, steps: runbook.steps, links: runbook.links } : null;
+    const ctx = { title, alert, ackUrl, runbook, kind };
     switch (action.type) {
       case 'webhook':
         await this.#post(action.url, { title, alert, ackUrl, runbook: rbSummary });
@@ -258,31 +283,57 @@ export class NotifierEngine {
         await this.#post(action.url, { text: `${title}\n${alert.message}${ackLine}${rbLine}` });
         return;
       case 'email':
-        // No SMTP client is bundled; email goes via an external mail-gateway
-        // webhook if configured, otherwise it's flagged for setup.
-        if (action.gatewayUrl) { await this.#post(action.gatewayUrl, { to: action.to, subject: title, text: `${alert.message}${ackLine}${rbLine}` }); return; }
-        return { status: 'skipped', error: 'email requires action.gatewayUrl (SMTP not bundled)' };
-      case 'teams':
-        // Microsoft Teams incoming webhook (MessageCard). Facts render in the
-        // card body; ack/runbook become tappable actions.
-        await this.#post(action.url, {
-          '@type': 'MessageCard', '@context': 'https://schema.org/extensions',
-          summary: title,
-          themeColor: alert.severity === 'critical' ? 'D93F4C' : alert.severity === 'warning' ? 'F0A030' : '4A8EFF',
-          title,
-          text: alert.message,
-          sections: [{ facts: [
-            { name: 'Device', value: alert.device_name },
-            ...(alert.check_name ? [{ name: 'Check', value: alert.check_name }] : []),
-            { name: 'Severity', value: alert.severity },
-            ...(runbook ? [{ name: 'Runbook', value: runbook.name }] : []),
-          ] }],
-          potentialAction: [
-            ...(ackUrl ? [{ '@type': 'OpenUri', name: 'Acknowledge', targets: [{ os: 'default', uri: ackUrl }] }] : []),
-            ...(rbLink ? [{ '@type': 'OpenUri', name: 'Open runbook', targets: [{ os: 'default', uri: rbLink }] }] : []),
-          ],
-        });
+        // Native SMTP when configured (action.smtp or global SMTP_* env);
+        // else via an external mail-gateway webhook.
+        return this.#sendEmail(action, ctx);
+      case 'smtp':
+        return this.#sendEmail(action, ctx);
+      case 'teams': {
+        // Modern path: Power Automate Workflows want an Adaptive Card;
+        // legacy incoming webhooks want a MessageCard. Explicit via
+        // action.card, auto-detected for logic.azure.com workflow URLs.
+        const adaptive = action.card === 'adaptive'
+          || (action.card !== 'messagecard' && /logic\.azure\.com|workflows/.test(String(action.url)));
+        const built = adaptive ? channels.teamsAdaptiveCard(action, ctx) : channels.teamsMessageCard(action, ctx);
+        await this.#post(built.url, built.body, built.headers);
         return;
+      }
+      case 'opsgenie': {
+        if (!action.apiKey) return { status: 'skipped', error: 'opsgenie requires action.apiKey' };
+        const built = channels.opsgenieAlert(action, ctx);
+        await this.#post(built.url, built.body, built.headers);
+        return;
+      }
+      case 'jira': {
+        if (!action.url || !action.projectKey) return { status: 'skipped', error: 'jira requires action.url and action.projectKey' };
+        if (ctx.kind === 'recovery') return { status: 'skipped', error: 'jira issues are not auto-closed' };
+        const built = channels.jiraIssue(action, ctx);
+        await this.#post(built.url, built.body, built.headers);
+        return;
+      }
+      case 'servicenow': {
+        if (!action.url) return { status: 'skipped', error: 'servicenow requires action.url (instance)' };
+        if (ctx.kind === 'recovery') return { status: 'skipped', error: 'servicenow incidents are not auto-closed' };
+        const built = channels.servicenowIncident(action, ctx);
+        await this.#post(built.url, built.body, built.headers);
+        return;
+      }
+      case 'discord': {
+        const built = channels.discordMessage(action, ctx);
+        await this.#post(built.url, built.body);
+        return;
+      }
+      case 'telegram': {
+        if (!action.botToken || !action.chatId) return { status: 'skipped', error: 'telegram requires botToken and chatId' };
+        const built = channels.telegramMessage(action, ctx);
+        await this.#post(built.url, built.body);
+        return;
+      }
+      case 'googlechat': {
+        const built = channels.googleChatMessage(action, ctx);
+        await this.#post(built.url, built.body);
+        return;
+      }
       case 'pagerduty': {
         // PagerDuty Events API v2. dedup_key = alert id so re-notifies update
         // the same PD incident instead of stacking new ones.
@@ -313,15 +364,48 @@ export class NotifierEngine {
     }
   }
 
-  async #post(url, payload) {
+  async #post(url, payload, headers = {}) {
     if (!url) throw new Error('missing url');
     const res = await this.fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
+
+  /**
+   * Email: native SMTP when configured (action.smtp overrides the global
+   * opts.smtp from SMTP_* env), else the legacy mail-gateway webhook.
+   * The transport is created lazily and cached.
+   */
+  async #sendEmail(action, ctx) {
+    const smtpCfg = action.smtp ?? this.smtp;
+    if (smtpCfg?.host) {
+      if (!this._mailer || this._mailerCfg !== smtpCfg) {
+        const { default: nodemailer } = await import('nodemailer');
+        this._mailer = nodemailer.createTransport({
+          host: smtpCfg.host,
+          port: Number(smtpCfg.port ?? 587),
+          secure: Boolean(smtpCfg.secure),
+          auth: smtpCfg.user ? { user: smtpCfg.user, pass: smtpCfg.password } : undefined,
+        });
+        this._mailerCfg = smtpCfg;
+      }
+      const msg = channels.smtpMessage(action, ctx);
+      if (!msg.to) return { status: 'skipped', error: 'email requires action.to' };
+      await this._mailer.sendMail({ from: smtpCfg.from ?? 'watcher@localhost', ...msg });
+      return;
+    }
+    if (action.gatewayUrl) {
+      await this.#post(action.gatewayUrl, {
+        to: action.to, subject: ctx.title,
+        text: `${ctx.alert.message}${ctx.ackUrl ? `\nAcknowledge: ${ctx.ackUrl}` : ''}`,
+      });
+      return;
+    }
+    return { status: 'skipped', error: 'email requires SMTP_* env, action.smtp, or action.gatewayUrl' };
   }
 
   #matches(rule, alert, device) {

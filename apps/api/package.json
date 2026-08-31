@@ -20,6 +20,7 @@
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.1",
     "ldapts": "^9.0.0",
+    "nodemailer": "^9.0.6",
     "pg": "^8.13.1"
   }
 }

@@ -27,6 +27,7 @@ import runbookRoutes from './modules/runbooks/routes.js';
 import statusRoutes from './modules/status/routes.js';
 import maintenanceRoutes from './modules/maintenance/routes.js';
 import configRoutes from './modules/config/routes.js';
+import ingestRoutes from './modules/ingest/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -57,6 +58,37 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
 
   // Liveness: the process is up. Cheap, never touches dependencies.
   fastify.get('/healthz', async () => ({ ok: true, uptime: process.uptime() }));
+
+  // Prometheus exposition for Watcher itself — scrape-ready like any exporter,
+  // so Watcher is a good citizen inside Prometheus/Grafana estates.
+  fastify.get('/metrics', async (request, reply) => {
+    const mem = process.memoryUsage();
+    const lines = [
+      '# HELP watcher_up 1 when the Watcher API process is serving.',
+      '# TYPE watcher_up gauge',
+      'watcher_up 1',
+      '# HELP watcher_uptime_seconds API process uptime.',
+      '# TYPE watcher_uptime_seconds counter',
+      `watcher_uptime_seconds ${process.uptime().toFixed(0)}`,
+      '# HELP watcher_process_resident_memory_bytes RSS of the API process.',
+      '# TYPE watcher_process_resident_memory_bytes gauge',
+      `watcher_process_resident_memory_bytes ${mem.rss}`,
+    ];
+    try {
+      const { rows } = await fastify.pg.query(
+        `SELECT severity, status, count(*)::int AS n FROM alerts
+         WHERE status <> 'resolved' GROUP BY severity, status`);
+      lines.push('# HELP watcher_alerts Active alerts by severity and status.',
+        '# TYPE watcher_alerts gauge');
+      for (const r of rows) lines.push(`watcher_alerts{severity="${r.severity}",status="${r.status}"} ${r.n}`);
+      const dev = await fastify.pg.query('SELECT count(*)::int AS n FROM devices WHERE monitored');
+      lines.push('# HELP watcher_devices_monitored Devices under monitoring.',
+        '# TYPE watcher_devices_monitored gauge',
+        `watcher_devices_monitored ${dev.rows[0].n}`);
+    } catch { /* DB briefly away — process metrics still expose */ }
+    return reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+      .send(lines.join('\n') + '\n');
+  });
 
   // Readiness: dependencies are reachable AND the monitoring engine is fresh.
   // Returns 503 when unhealthy so orchestrators pull the pod from rotation and
@@ -99,6 +131,7 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(statusRoutes, { prefix: '/api/status' });
   await fastify.register(maintenanceRoutes, { prefix: '/api/maintenance' });
   await fastify.register(configRoutes, { prefix: '/api/config' });
+  await fastify.register(ingestRoutes, { prefix: '/api/ingest' });
 
   // Optionally serve the built web UI from the same origin as the API, so the
   // whole product is reachable as a single service (no dev proxy). API and
@@ -146,6 +179,9 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
           fastify.jwt.sign({ purpose: 'ack', alertId, tenantId }, { expiresIn: '24h' }),
       },
     );
+
+    // Expose the notifier so routes can offer "send a test notification".
+    fastify.decorate('notifier', notifier);
 
     const anomaly = config.anomaly?.enabled
       ? new AnomalyEngine(

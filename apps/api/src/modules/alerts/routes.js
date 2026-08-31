@@ -126,6 +126,16 @@ export default async function alertRoutes(fastify) {
     return { acknowledged: rows.length, requested: ids.length };
   });
 
+  /** Verify a channel config by sending a synthetic notification through the
+   *  real delivery path — admins test Teams/Jira/etc. before relying on them. */
+  fastify.post('/test-channel', {
+    schema: { body: { type: 'object', required: ['action'], properties: { action: { type: 'object' } } } },
+    preHandler: fastify.requireRole('admin'),
+  }, async (request, reply) => {
+    if (!fastify.notifier) return reply.code(503).send({ error: 'notifier not running on this instance' });
+    return fastify.notifier.testChannel(request.body.action);
+  });
+
   // ── Notification & escalation rules ────────────────────────────────────────
   fastify.get('/rules', { preHandler: fastify.requireRole('operator') }, async (request) => {
     const { rows } = await fastify.pg.query(
@@ -139,12 +149,25 @@ export default async function alertRoutes(fastify) {
       type: 'object',
       required: ['type'],
       properties: {
-        type: { type: 'string', enum: ['webhook', 'slack', 'teams', 'pagerduty', 'email', 'log', 'oncall'] },
+        type: { type: 'string', enum: ['webhook', 'slack', 'teams', 'pagerduty', 'opsgenie',
+          'jira', 'servicenow', 'discord', 'telegram', 'googlechat', 'email', 'smtp', 'log', 'oncall'] },
         url: { type: 'string' },
         to: { type: 'string' },
         gatewayUrl: { type: 'string' },
-        routingKey: { type: 'string' }, // for type: 'pagerduty' (Events API v2)
-        scheduleId: { type: 'string', format: 'uuid' }, // for type: 'oncall'
+        routingKey: { type: 'string' },  // pagerduty (Events API v2)
+        apiKey: { type: 'string' },      // opsgenie
+        card: { type: 'string', enum: ['adaptive', 'messagecard'] }, // teams
+        projectKey: { type: 'string' },  // jira
+        issueType: { type: 'string' },   // jira
+        email: { type: 'string' },       // jira basic auth
+        apiToken: { type: 'string' },    // jira basic auth
+        bearer: { type: 'string' },      // jira PAT
+        user: { type: 'string' },        // servicenow basic auth
+        password: { type: 'string' },    // servicenow basic auth
+        botToken: { type: 'string' },    // telegram
+        chatId: { type: 'string' },      // telegram
+        smtp: { type: 'object' },        // per-action SMTP override
+        scheduleId: { type: 'string', format: 'uuid' }, // oncall
       },
     },
   };
