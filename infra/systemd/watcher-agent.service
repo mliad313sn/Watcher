@@ -1,0 +1,21 @@
+[Unit]
+Description=Watcher OS agent (pushes this host's CPU/mem/disk/load)
+Documentation=https://github.com/mliad313sn/Watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The agent only reads /proc and statfs — run it unprivileged.
+User=watcher
+Group=watcher
+EnvironmentFile=/etc/watcher/agent.env
+ExecStart=/usr/bin/node /opt/watcher/apps/agent/watcher-agent.mjs
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

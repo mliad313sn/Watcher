@@ -1,0 +1,24 @@
+[Unit]
+Description=Watcher poller (SNMP/WMI/Meraki/Asterisk connectors, discovery, LLDP topology)
+Documentation=https://github.com/mliad313sn/Watcher
+After=network-online.target watcher-api.service
+Wants=network-online.target
+PartOf=watcher.target
+
+[Service]
+Type=simple
+User=watcher
+Group=watcher
+EnvironmentFile=/etc/watcher/watcher.env
+WorkingDirectory=/opt/watcher
+ExecStart=/usr/bin/node /opt/watcher/apps/poller/src/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/watcher /tmp
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target watcher.target

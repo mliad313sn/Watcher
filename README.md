@@ -160,6 +160,29 @@ npm run dev:web               # Vite MPA on :5173  ← open this in dev
 npm run dev:poller            # connectors
 ```
 
+### Install as a system service (bare metal / VM)
+
+```bash
+sudo bash scripts/install-service.sh
+```
+
+On a host with systemd this installs the unit files from `infra/systemd/`
+(`watcher-api`, `watcher-poller`, optional `watcher-agent`), creates the
+`watcher` user and `/etc/watcher/watcher.env`, then enables and starts
+everything (`Restart=always`, hardened units). On hosts without an active
+systemd (containers, minimal images) it installs the `watcherd` supervisor
+instead — same lifecycle, same auto-restart:
+
+```bash
+watcherd status            # ● api · ● poller · ● agent …
+watcherd restart api       # bounce one service
+watcherd logs poller       # tail a service log (/var/log/watcher/)
+```
+
+To report a host's OS metrics, drop a token into `/etc/watcher/agent.env`
+(`WATCHER_URL`, `WATCHER_TOKEN` from Admin → API tokens, `WATCHER_DEVICE`)
+and the agent service starts with the rest.
+
 ### Single-origin without nginx
 
 The API can serve the built UI itself — set `WEB_DIST` to the built bundle and

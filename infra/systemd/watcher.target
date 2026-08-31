@@ -1,0 +1,6 @@
+[Unit]
+Description=Watcher monitoring platform (all services)
+Documentation=https://github.com/mliad313sn/Watcher
+
+[Install]
+WantedBy=multi-user.target

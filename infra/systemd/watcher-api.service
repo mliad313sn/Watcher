@@ -1,0 +1,26 @@
+[Unit]
+Description=Watcher API (console, streamer, correlation, notifier, anomaly engines)
+Documentation=https://github.com/mliad313sn/Watcher
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+PartOf=watcher.target
+
+[Service]
+Type=simple
+User=watcher
+Group=watcher
+EnvironmentFile=/etc/watcher/watcher.env
+WorkingDirectory=/opt/watcher
+ExecStart=/usr/bin/node /opt/watcher/apps/api/src/server.js
+Restart=always
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/watcher /tmp
+PrivateTmp=false
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target watcher.target
