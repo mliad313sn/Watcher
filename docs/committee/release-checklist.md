@@ -21,7 +21,7 @@ ready to market with a final release report.
   pathological.
 - [x] **R4 — Version 1.0.0-rc.1.** Bump workspace versions, write
   CHANGELOG.md summarizing all release waves, tag-worthy commit.
-- [ ] **R5 — Docs completeness pass.** README accuracy sweep against the
+- [x] **R5 — Docs completeness pass.** README accuracy sweep against the
   shipped product; ensure INTEGRATIONS.md, install/service docs, and
   .env.example agree with the code; add an OPERATIONS.md (backup, upgrade,
   troubleshooting basics).

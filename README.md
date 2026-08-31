@@ -69,18 +69,25 @@ watcher/
 │   │           ├── discovery/  L2/L3 discovery framework
 │   │           ├── dashboards/ widget layout persistence
 │   │           └── auth/       JWT login, RBAC guard
-│   ├── poller/         Connector workers (SNMP, Meraki, WinRM, Asterisk)
+│   ├── poller/         Connector workers (SNMP, Meraki, WinRM, Asterisk, LLDP)
+│   ├── agent/          Zero-dependency OS metrics agent (push via API token)
 │   └── web/            Multi-page frontend (Vite MPA, no SPA framework required)
-│       └── pages: index, devices, device, alerts, topology, reports, settings, login
+│       └── pages: index, devices, device, alerts, topology, reports,
+│                  settings, login, ack, status (public)
 ├── packages/
 │   ├── shared/         Severity model, Nagios state mapping, shared utils
-│   └── ui/             Widget library: gauges, heatmaps, traffic graphs, grids
+│   └── ui/             Widget library + chrome, palette, theme, tour, toasts
 ├── infra/
 │   ├── nagios/         Nagios Core Dockerfile + example object configuration
+│   ├── systemd/        Hardened service units (api, poller, agent, target)
 │   └── sql/
-│       ├── postgres/   Config-plane schema (tenants, users, devices, alerts…)
+│       ├── postgres/   Config-plane schema — 12 idempotent migrations
 │       └── timescale/  Metrics hypertables, continuous aggregates, retention
-└── docker-compose.yml  Full local stack
+├── docs/               INTEGRATIONS · OPERATIONS · PERFORMANCE ·
+│                       SECURITY-REVIEW · committee/ (published reviews)
+├── scripts/            install-service.sh · watcherd · smoke-integration ·
+│                       loadtest · dev-launch
+└── docker-compose.yml  Full local stack (incl. single-origin web service)
 ```
 
 ## Design decisions
