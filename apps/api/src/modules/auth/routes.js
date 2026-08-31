@@ -28,6 +28,19 @@ export default async function authRoutes(fastify, opts) {
     const { rows: trows } = await fastify.pg.query(
       'SELECT id, name FROM tenants WHERE name = $1', [tenantName]);
     if (!trows[0]) throw new Error(`tenant "${tenantName}" not found`);
+    // SECURITY: a LOCAL account can never be claimed through the IdP. Without
+    // this, anyone who can set preferred_username at the IdP (or a hostile
+    // group mapping) could overwrite a local admin's role/auth provenance —
+    // an account-takeover path. Federated logins may only create or refresh
+    // accounts whose auth_source matches their own source.
+    const { rows: existing } = await fastify.pg.query(
+      'SELECT auth_source FROM users WHERE tenant_id = $1 AND username = $2',
+      [trows[0].id, identity.username]);
+    if (existing[0] && existing[0].auth_source !== source) {
+      fastify.log.warn({ username: identity.username, source, owner: existing[0].auth_source },
+        'SSO login refused: username belongs to an account with different auth provenance');
+      return null;
+    }
     const { rows } = await fastify.pg.query(
       `INSERT INTO users (tenant_id, username, display_name, email, role, password_hash, auth_source)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -36,10 +49,12 @@ export default async function authRoutes(fastify, opts) {
              email = COALESCE(EXCLUDED.email, users.email),
              role = EXCLUDED.role,           -- IdP groups are authoritative
              auth_source = EXCLUDED.auth_source
+       WHERE users.auth_source = EXCLUDED.auth_source
        RETURNING id, username, display_name, role, disabled`,
       [trows[0].id, identity.username, identity.displayName, identity.email,
        identity.role, SSO_SENTINEL, source]);
     const user = rows[0];
+    if (!user) return null;         // race with the provenance guard → refuse
     if (user.disabled) return null; // locally disabled beats IdP say-so
     return { ...user, tenant_id: trows[0].id, tenant_name: trows[0].name };
   }
@@ -95,7 +110,7 @@ export default async function authRoutes(fastify, opts) {
       const identity = oidc.identityFor(claims);
       if (!identity) return fail('your account has no access here — ask an admin to map your group');
       const user = await upsertSsoUser(identity, 'oidc');
-      if (!user) return fail('account disabled');
+      if (!user) return fail('this account cannot sign in with SSO — contact your administrator');
       const token = issueSession(user);
       // Fragment (never query) so the token stays out of server logs.
       return reply.redirect(`/login.html#sso_token=${encodeURIComponent(token)}`);

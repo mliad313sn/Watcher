@@ -137,10 +137,29 @@ export default async function alertRoutes(fastify) {
   });
 
   // ── Notification & escalation rules ────────────────────────────────────────
+  /** Channel credentials never echo back through the read API — the UI only
+   *  needs to know a secret is set, not what it is (config export, admin-only,
+   *  keeps full values for backup). */
+  const SECRET_FIELDS = ['apiKey', 'apiToken', 'password', 'botToken', 'routingKey', 'bearer'];
+  function redactActions(actions) {
+    return (Array.isArray(actions) ? actions : []).map((a) => {
+      const out = { ...a };
+      for (const f of SECRET_FIELDS) if (out[f]) out[f] = '•••';
+      if (out.smtp?.password) out.smtp = { ...out.smtp, password: '•••' };
+      return out;
+    });
+  }
+
   fastify.get('/rules', { preHandler: fastify.requireRole('operator') }, async (request) => {
     const { rows } = await fastify.pg.query(
       'SELECT * FROM alert_rules WHERE tenant_id = $1 ORDER BY name', [request.user.tenantId]);
-    return { rules: rows };
+    return {
+      rules: rows.map((r) => ({
+        ...r,
+        actions: redactActions(r.actions),
+        escalation_actions: redactActions(r.escalation_actions),
+      })),
+    };
   });
 
   const actionSchema = {
