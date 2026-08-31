@@ -68,6 +68,35 @@ export default fp(async function authPlugin(fastify, opts) {
     }
   });
 
+  /**
+   * Redis fixed-window rate limiter keyed by the authenticated principal
+   * (user or API token id). Attach AFTER a requireRole guard so request.user
+   * exists. A runaway integration gets clean 429s with Retry-After instead
+   * of flooding the alert/metric tables.
+   *
+   *   preHandler: [fastify.requireRole('operator'), fastify.rateLimit('ingest', 120, 60)]
+   */
+  fastify.decorate('rateLimit', function rateLimit(bucket, max, windowS) {
+    return async function rateGuard(request, reply) {
+      const who = request.user?.sub ?? request.ip;
+      const win = Math.floor(Date.now() / (windowS * 1000));
+      const key = `watcher:rl:${bucket}:${who}:${win}`;
+      try {
+        const n = await fastify.redis.incr(key);
+        if (n === 1) await fastify.redis.expire(key, windowS + 1);
+        reply.header('X-RateLimit-Limit', max);
+        reply.header('X-RateLimit-Remaining', Math.max(0, max - n));
+        if (n > max) {
+          const retryS = windowS - Math.floor((Date.now() / 1000) % windowS);
+          return reply.code(429).header('Retry-After', retryS)
+            .send({ error: `rate limit exceeded: ${max} requests per ${windowS}s for ${bucket}` });
+        }
+      } catch {
+        // Redis briefly away — fail open; monitoring must not be the outage.
+      }
+    };
+  });
+
   fastify.decorate('requireRole', function requireRole(minRole) {
     const need = ROLE_WEIGHT[minRole] ?? Infinity;
     return async function roleGuard(request, reply) {
@@ -80,4 +109,4 @@ export default fp(async function authPlugin(fastify, opts) {
       }
     };
   });
-}, { name: 'watcher-auth', dependencies: ['watcher-db'] });
+}, { name: 'watcher-auth', dependencies: ['watcher-db', 'watcher-redis'] });

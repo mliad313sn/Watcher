@@ -66,7 +66,7 @@ export default async function ingestRoutes(fastify) {
         properties: { alerts: { type: 'array', maxItems: 200 } },
       },
     },
-    preHandler: fastify.requireRole('operator'),
+    preHandler: [fastify.requireRole('operator'), fastify.rateLimit('ingest-am', 60, 60)],
   }, async (request) => {
     const tenantId = request.user.tenantId;
     const results = { raised: 0, updated: 0, resolved: 0, noop: 0 };
@@ -104,7 +104,7 @@ export default async function ingestRoutes(fastify) {
         },
       },
     },
-    preHandler: fastify.requireRole('operator'),
+    preHandler: [fastify.requireRole('operator'), fastify.rateLimit('ingest-event', 120, 60)],
   }, async (request) => {
     const { device, check, severity = 'warning', message, status = 'firing' } = request.body;
     const evt = { device, check: `ext:${check}`, severity, message };

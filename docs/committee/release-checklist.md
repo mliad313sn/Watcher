@@ -12,7 +12,7 @@ ready to market with a final release report.
   (hashing, scoping, timing), ingest endpoints (injection, tenant
   isolation, abuse limits), channel configs (secret handling in
   alert_rules), config import (SQL/regex injection). Fix what's found.
-- [ ] **R2 — Abuse hardening on ingest.** Rate limiting on
+- [x] **R2 — Abuse hardening on ingest.** Rate limiting on
   /api/ingest/* and /api/metrics/ingest so a runaway integration cannot
   flood the alert table; verified with a burst test.
 - [ ] **R3 — Performance sanity.** Measure p50/p95 latency on the hot

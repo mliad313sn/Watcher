@@ -313,7 +313,9 @@ export default async function metricsRoutes(fastify) {
         },
       },
     },
-    preHandler: fastify.requireRole('operator'),
+    // 600/min per principal: a 10s-interval agent uses 6 — headroom for
+    // hundreds of hosts per token, but a tight loop gets throttled.
+    preHandler: [fastify.requireRole('operator'), fastify.rateLimit('metrics-ingest', 600, 60)],
   }, async (request, reply) => {
     const { device, metrics } = request.body;
     const { rows } = await fastify.pg.query(
