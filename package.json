@@ -1,6 +1,6 @@
 {
   "name": "watcher",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Enterprise network & systems monitoring platform — Nagios Core engine, Fastify middleware, TimescaleDB metrics, multi-page dashboard UI",
   "type": "module",

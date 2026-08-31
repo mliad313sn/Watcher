@@ -37,7 +37,7 @@ export class WShell extends HTMLElement {
             </div>
             <div>
               <div class="w-brand-name">Watcher</div>
-              <span class="w-brand-ver mono">v0.1.0-stable</span>
+              <span class="w-brand-ver mono">v1.0.0-rc.1</span>
             </div>
           </div>
           <nav>

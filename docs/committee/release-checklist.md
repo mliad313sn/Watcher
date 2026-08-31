@@ -19,7 +19,7 @@ ready to market with a final release report.
   endpoints (/api/nagios/state, /api/alerts, dashboard payload) under
   concurrent load with the demo fleet; document numbers; fix anything
   pathological.
-- [ ] **R4 — Version 1.0.0-rc.1.** Bump workspace versions, write
+- [x] **R4 — Version 1.0.0-rc.1.** Bump workspace versions, write
   CHANGELOG.md summarizing all release waves, tag-worthy commit.
 - [ ] **R5 — Docs completeness pass.** README accuracy sweep against the
   shipped product; ensure INTEGRATIONS.md, install/service docs, and
