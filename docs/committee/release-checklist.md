@@ -15,7 +15,7 @@ ready to market with a final release report.
 - [x] **R2 — Abuse hardening on ingest.** Rate limiting on
   /api/ingest/* and /api/metrics/ingest so a runaway integration cannot
   flood the alert table; verified with a burst test.
-- [ ] **R3 — Performance sanity.** Measure p50/p95 latency on the hot
+- [x] **R3 — Performance sanity.** Measure p50/p95 latency on the hot
   endpoints (/api/nagios/state, /api/alerts, dashboard payload) under
   concurrent load with the demo fleet; document numbers; fix anything
   pathological.
