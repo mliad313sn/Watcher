@@ -150,8 +150,19 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
       if (request.raw.url.startsWith('/api/') || request.raw.url.startsWith('/ws')) {
         return reply.code(404).send({ error: 'not found' });
       }
-      // A clean path like "/devices" maps to its built "devices.html".
       const clean = request.raw.url.split('?')[0].replace(/^\/+/, '');
+      // Files that exist on disk but were built AFTER boot (an upgrade's new
+      // hashed assets) have no static route yet — serve them directly so a
+      // web rebuild never requires an API restart. Reject traversal first.
+      if (clean && !clean.includes('..') && existsSync(join(config.webDist, clean))) {
+        return reply.sendFile(clean);
+      }
+      // A fingerprinted asset that truly doesn't exist is a hard 404 — an
+      // HTML fallback here masks build/cache bugs as MIME errors.
+      if (clean.startsWith('assets/')) {
+        return reply.code(404).send({ error: 'asset not found' });
+      }
+      // A clean path like "/devices" maps to its built "devices.html".
       const asHtml = clean === '' ? 'index.html' : `${clean}.html`;
       if (existsSync(join(config.webDist, asHtml))) return reply.sendFile(asHtml);
       return reply.sendFile('index.html');

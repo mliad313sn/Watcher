@@ -25,7 +25,7 @@ ready to market with a final release report.
   shipped product; ensure INTEGRATIONS.md, install/service docs, and
   .env.example agree with the code; add an OPERATIONS.md (backup, upgrade,
   troubleshooting basics).
-- [ ] **R6 — Final full-stack verification + market-ready declaration.**
+- [x] **R6 — Final full-stack verification + market-ready declaration.**
   All unit tests, integration smoke, ecosystem E2E, SSO E2E, anomaly E2E
   green on one run; live browser pass with zero console errors; publish
   the final release report (committee Session 05) and declare

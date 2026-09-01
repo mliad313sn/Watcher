@@ -1,0 +1,184 @@
+<title>Watcher Release Report</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #0a0e17; --panel: #12161f; --panel-2: #161b26;
+    --line: #242a3a; --line-soft: #1c2230;
+    --ink: #e9ecf4; --dim: #a2a9bb; --faint: #6c7386;
+    --accent: #4a8eff; --accent-soft: rgba(74,142,255,.14); --accent-line: rgba(74,142,255,.4);
+    --ok: #47c58e; --ok-soft: rgba(71,197,142,.13);
+    --warn: #ffb95f; --warn-soft: rgba(255,185,95,.13);
+    --maxw: 1040px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+      --line: #dfe4ee; --line-soft: #e9edf4;
+      --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+      --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+      --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+      --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #eef1f6; --panel: #ffffff; --panel-2: #f6f8fc;
+    --line: #dfe4ee; --line-soft: #e9edf4;
+    --ink: #141925; --dim: #4d5566; --faint: #7a8296;
+    --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10); --accent-line: rgba(47,111,224,.34);
+    --ok: #178a5a; --ok-soft: rgba(23,138,90,.10);
+    --warn: #b9791f; --warn-soft: rgba(185,121,31,.12);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.015em; }
+  a { color: var(--accent); }
+  header.mast { border-bottom: 1px solid var(--line); background:
+      radial-gradient(130% 160% at 50% -35%, var(--accent-soft), transparent 58%), var(--panel); }
+  .mast-in { padding: 46px 0 38px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--accent-line); }
+  h1.title { font-size: clamp(32px, 5.4vw, 48px); font-weight: 700; line-height: 1.06; }
+  .lede { font-size: 17.5px; color: var(--dim); max-width: 64ch; }
+  .verdict { display: inline-flex; align-items: center; gap: 10px;
+    background: var(--ok-soft); color: var(--ok);
+    border: 1px solid color-mix(in srgb, var(--ok) 34%, transparent);
+    padding: 10px 20px; border-radius: 999px; font-size: 16px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace; letter-spacing: .04em; }
+  .verdict .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 0 5px var(--ok-soft); }
+  .mast-meta { font-size: 13px; color: var(--faint); font-family: "IBM Plex Mono", monospace; }
+  section { padding: 44px 0; border-bottom: 1px solid var(--line-soft); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+  .sec-num { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--faint);
+    border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+  h2.sec-title { font-size: 23px; font-weight: 600; }
+  .sec-sub { color: var(--dim); max-width: 70ch; margin: 8px 0 0; font-size: 15px; }
+
+  .score { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 17px 19px; }
+  .stat .n { font-size: 26px; font-weight: 700; font-family: "IBM Plex Mono", monospace; color: var(--ok);
+    font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12.5px; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+
+  .scope { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 780px) { .scope { grid-template-columns: 1fr; } }
+  .cap { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 19px 21px; }
+  .cap .k { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--accent); }
+  .cap h3 { font-size: 16px; margin: 6px 0 8px; }
+  .cap p { margin: 0; font-size: 13.5px; color: var(--dim); }
+
+  .sessions p { font-size: 15px; color: var(--dim); max-width: 76ch; margin: 0 0 12px; }
+  .sessions strong { color: var(--ink); }
+
+  .post { display: flex; flex-direction: column; gap: 9px; }
+  .po { display: flex; gap: 12px; background: var(--panel-2); border: 1px solid var(--line-soft);
+    border-radius: 8px; padding: 12px 15px; font-size: 14px; align-items: baseline; }
+  .po b { color: var(--warn); font-family: "IBM Plex Mono", monospace; font-size: 11px; white-space: nowrap; }
+  .po span { color: var(--dim); }
+  footer { padding: 34px 0 60px; color: var(--faint); font-size: 12.5px;
+    font-family: "IBM Plex Mono", monospace; line-height: 1.8; }
+</style>
+
+<header class="mast">
+  <div class="wrap mast-in">
+    <div class="eyebrow">Committee Session 05 — Release Report · Watcher 1.0.0-rc.1</div>
+    <h1 class="title">Ready to market</h1>
+    <p class="lede">The Product Owner closes the market-readiness checklist: every committed capability
+      shipped, every claim verified against the running product, every deal-blocker from the competitive
+      review addressed. Watcher 1.0.0-rc.1 is a complete, hardened, interconnected monitoring platform.</p>
+    <span class="verdict"><span class="dot"></span>READY TO MARKET</span>
+    <div class="mast-meta">release checklist R1–R6: all closed · final verification run: this build</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span>
+      <div><h2 class="sec-title">Final verification scoreboard</h2>
+        <p class="sec-sub">One pass, one build, all green. The browser pass even earned its keep — it
+          caught a static-serving bug (post-rebuild assets required an API restart), fixed and re-verified
+          in the same run.</p></div></div>
+    <div class="score">
+      <div class="stat"><div class="n">74 / 74</div><div class="l">unit tests across api, poller, ui workspaces</div></div>
+      <div class="stat"><div class="n">9 / 9</div><div class="l">integration smoke — live Nagios→correlation→recovery pipeline</div></div>
+      <div class="stat"><div class="n">17 / 17</div><div class="l">ecosystem E2E — every channel through the real delivery path</div></div>
+      <div class="stat"><div class="n">8 / 8</div><div class="l">SSO E2E — incl. forged-state, replay, local-takeover attacks refused</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">browser console errors, dashboard + alerts, live data</div></div>
+      <div class="stat"><div class="n">17.7 ms</div><div class="l">worst p95 across the 7 hot endpoints, 0 errors in 178k requests</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span>
+      <div><h2 class="sec-title">What 1.0.0-rc.1 is</h2>
+        <p class="sec-sub">Six capability pillars, each grown through a committee-reviewed wave and
+          recorded in CHANGELOG.md.</p></div></div>
+    <div class="scope">
+      <div class="cap"><div class="k">Engine</div><h3>Correlation-first monitoring on Nagios Core</h3>
+        <p>Drop-in for the existing Nagios estate: live streamer, automatic topology root-cause with child
+          suppression, dedup, flap damping, engine-staleness self-alerting, multi-tenant everywhere.</p></div>
+      <div class="cap"><div class="k">Incident stack</div><h3>On-call to status page, in the box</h3>
+        <p>Rotations, ack-SLA escalation, runbooks on every page, one-tap mobile acknowledge, maintenance
+          windows, public status page — the stack others sell as three products.</p></div>
+      <div class="cap"><div class="k">Enterprise</div><h3>SSO, tokens, SLA, GitOps, services</h3>
+        <p>OIDC + LDAP with group→role mapping, scoped API tokens, fleet SLA reports with CSV, full
+          config-as-code, hardened systemd units + watcherd supervisor, docker-compose.</p></div>
+      <div class="cap"><div class="k">Intelligence</div><h3>Explainable anomalies, self-building topology</h3>
+        <p>Median+MAD dynamic thresholds ("+17.7σ above its 7-day normal"), LLDP auto-topology, a
+          zero-dependency OS agent, push metrics ingest.</p></div>
+      <div class="cap"><div class="k">Ecosystem</div><h3>Interconnected to everything that matters</h3>
+        <p>12 outbound channels (Teams Adaptive Cards, Slack, PagerDuty, Opsgenie, ServiceNow, Jira,
+          Discord, Telegram, Google Chat, SMTP, webhook), Alertmanager + generic inbound, Prometheus
+          in and out, one-call channel testing.</p></div>
+      <div class="cap"><div class="k">Experience</div><h3>A console operators enjoy</h3>
+        <p>Light/dark, ⌘K palette with actions, guided tour, one-click demo, bulk ack + assignment,
+          saved views, installable PWA, WCAG touches — verified live, both themes.</p></div>
+    </div>
+  </section>
+
+  <section class="sessions">
+    <div class="sec-head"><span class="sec-num">03</span>
+      <div><h2 class="sec-title">The committee record</h2>
+        <p class="sec-sub">Four sessions drove this release; each published its evidence.</p></div></div>
+    <p><strong>Session 02 — Adoption Review</strong> walked the first deployed build and shipped the
+      six fixes separating "works" from "adopted" (live feed backfill, toasts, palette, legibility,
+      accessibility, the demo-eviction guard).</p>
+    <p><strong>Session 03 — Market Position</strong> assessed ten competitors with current research,
+      sharpened the positioning — "the modern, self-hosted console for teams who outgrew Nagios but
+      won't move to SaaS observability" — and sequenced the gap-closing roadmap that later waves
+      executed to done.</p>
+    <p><strong>Session 04 — Ecosystem &amp; Interoperability</strong> made interconnection a first-class
+      capability: pure payload builders, full-citizen inbound alerts, test-before-trust, dedup on every
+      far side.</p>
+    <p><strong>Session 05 — this report</strong> closes the loop: security review (a real SSO takeover
+      path found and fixed), ingest rate limiting burst-verified, the performance baseline, versioning,
+      docs, and the final all-green verification.</p>
+  </section>
+
+  <section style="border-bottom:none">
+    <div class="sec-head"><span class="sec-num">04</span>
+      <div><h2 class="sec-title">Post-1.0, by decision</h2>
+        <p class="sec-sub">Nothing here blocks the market. Each is a scope choice, recorded with its
+          reasoning.</p></div></div>
+    <div class="post">
+      <div class="po"><b>DECIDED</b><span><strong>SAML</strong> — OIDC covers ADFS/Entra/Okta/Keycloak;
+        hand-rolled XML-DSig is a security liability. Revisit via a vetted library on deal demand.</span></div>
+      <div class="po"><b>SCOPE</b><span><strong>Logs, APM/tracing, cloud-provider APIs</strong> — outside
+        the wedge on purpose; full-stack observability buyers should buy Datadog or the Grafana stack.
+        Watcher feeds and receives those stacks instead of imitating them.</span></div>
+      <div class="po"><b>LATER</b><span><strong>Native mobile app</strong> — signed-link ack + the
+        installable PWA already cover the on-call moment; a push-capable app is a growth item, not a
+        launch item.</span></div>
+    </div>
+  </section>
+
+  <footer>Watcher 1.0.0-rc.1 · Committee Session 05 — Release Report · every number above reproduced on
+    the final build. Companions: Session 02 — Adoption · Session 03 — Market Position ·
+    Session 04 — Ecosystem.</footer>
+</div>
