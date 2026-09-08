@@ -14,6 +14,14 @@ export the whole monitoring configuration as one JSON bundle and import it
 idempotently on any install. Fully self-hosted and air-gap friendly (vendored
 fonts, no CDN, no phone-home).
 
+**The event plane is in the box too** — an SNMP trap receiver (v1/v2c/v3,
+informs, RFC 3584 v1→v2c translation) and a syslog receiver (RFC 3164 and
+RFC 5424, UDP and TCP), with an ordered rule engine that turns what a device
+says into an alert. Events enter the *same* pipeline as Nagios checks, so
+correlation, maintenance windows, on-call and runbooks apply unchanged — see
+[docs/EVENTS.md](docs/EVENTS.md). That closes the gap polling cannot see:
+what happened *between* two polls.
+
 Also in the box: **dynamic thresholds** (deterministic median+MAD anomaly
 detection that explains every alert it raises), **LLDP auto-topology** (the L2
 map builds itself from what switches report), a **zero-dependency OS agent**
@@ -30,7 +38,7 @@ generic event API inbound, and Prometheus exposition outbound — see
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │
-│   dashboard · devices · alerts · topology · reports · settings · login     │
+│  dashboard · devices · alerts · events · topology · reports · settings    │
 │           REST (fetch)  ▲                ▲  WebSocket (live events)        │
 └─────────────────────────┼────────────────┼────────────────────────────────┘
                           │                │
@@ -47,8 +55,9 @@ generic event API inbound, and Prometheus exposition outbound — see
 └────────────────────────────────────────────────────────────────────────────┘
                           ▲
 ┌─────────────────────────┴──────────────────────────────────────────────────┐
-│                     apps/poller — connector workers                        │
+│              apps/poller — connector workers + event receivers             │
 │   SNMP v1/v2c/v3 · WinRM/WMI · Meraki REST · Asterisk AMI · discovery      │
+│   SNMP traps (162/udp) · syslog (514/udp+tcp) → rule engine → alerts       │
 │         (metrics → TimescaleDB, live state → Redis pub/sub)                │
 └────────────────────────────────────────────────────────────────────────────┘
 ```

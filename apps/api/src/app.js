@@ -28,6 +28,7 @@ import statusRoutes from './modules/status/routes.js';
 import maintenanceRoutes from './modules/maintenance/routes.js';
 import configRoutes from './modules/config/routes.js';
 import ingestRoutes from './modules/ingest/routes.js';
+import eventRoutes from './modules/events/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -132,6 +133,7 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(maintenanceRoutes, { prefix: '/api/maintenance' });
   await fastify.register(configRoutes, { prefix: '/api/config' });
   await fastify.register(ingestRoutes, { prefix: '/api/ingest' });
+  await fastify.register(eventRoutes, { prefix: '/api/events' });
 
   // Optionally serve the built web UI from the same origin as the API, so the
   // whole product is reachable as a single service (no dev proxy). API and

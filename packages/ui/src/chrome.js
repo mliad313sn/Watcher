@@ -15,6 +15,7 @@ const NAV = [
   { id: 'dashboard', href: '/index.html', label: 'Global View', icon: 'language' },
   { id: 'devices', href: '/devices.html', label: 'Inventory', icon: 'inventory_2' },
   { id: 'alerts', href: '/alerts.html', label: 'Alerts', icon: 'warning', badge: true },
+  { id: 'events', href: '/events.html', label: 'Events', icon: 'bolt' },
   { id: 'topology', href: '/topology.html', label: 'Topology', icon: 'hub' },
   { id: 'reports', href: '/reports.html', label: 'Reports', icon: 'monitoring' },
   { id: 'settings', href: '/settings.html', label: 'Admin', icon: 'admin_panel_settings' },

@@ -91,6 +91,12 @@ import('./lldp.js').then(({ discoverLldpTopology }) => {
   setInterval(sweep, Number(process.env.LLDP_INTERVAL_MS ?? 3_600_000)).unref();
 });
 
+// Event plane: SNMP traps and syslog. Off unless a port is configured —
+// see apps/poller/src/receivers/index.js for why that default is deliberate.
+const receivers = await import('./receivers/index.js')
+  .then(({ startReceivers }) => startReceivers({ pg: pgPool, tsdb: tsdbPool, redis, log }))
+  .catch((err) => { log.error({ err }, 'event receivers failed to start'); return { stop: async () => {} }; });
+
 // Discovery job queue (BRPOP loop) — jobs are created by the API.
 import('./discovery-worker.js')
   .then(({ startDiscoveryWorker }) =>
@@ -101,6 +107,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, async () => {
     log.info({ signal }, 'poller shutting down');
     scheduler.stop();
+    await receivers.stop();
     await writer.close();
     await Promise.allSettled([pgPool.end(), tsdbPool.end(), redis.quit()]);
     process.exit(0);

@@ -70,6 +70,23 @@ relay is still supported.
 - `POST /api/metrics/ingest` — push metrics from anything (the OS agent uses
   this).
 
+## Device-originated events
+
+Traps and syslog are the half of monitoring that polling cannot see: what
+happened *between* two polls. Both receivers live in the poller and are off
+until given a port.
+
+| Surface | How |
+|---|---|
+| **SNMP traps (v1, v2c, v3)** | `TRAP_PORT=162` plus `TRAP_COMMUNITIES` and/or `TRAP_V3_USERS`. Informs are acknowledged. v1 traps are translated to their v2c OID (RFC 3584) so one rule set covers both. |
+| **Syslog (RFC 3164 + RFC 5424)** | `SYSLOG_PORT=514`, UDP and TCP; TCP reads both RFC 6587 framings. |
+| **Rule engine** | OID / regex / facility / severity selectors → raise, clear, drop or log. `POST /api/events/test` dry-runs the live rule set. |
+| **Search** | `GET /api/events?q=…&source=…&maxSeverity=3` |
+
+Events enter the **same** alert pipeline as Nagios checks, so correlation,
+maintenance windows, on-call and runbooks all apply unchanged. Full
+documentation: [docs/EVENTS.md](EVENTS.md).
+
 ## Identity
 
 - **OIDC**: Keycloak, Authentik, Okta, Entra ID, Google — `SSO_OIDC_*` env,

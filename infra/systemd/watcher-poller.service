@@ -1,5 +1,5 @@
 [Unit]
-Description=Watcher poller (SNMP/WMI/Meraki/Asterisk connectors, discovery, LLDP topology)
+Description=Watcher poller (connectors, discovery, LLDP topology, trap/syslog receivers)
 Documentation=https://github.com/mliad313sn/Watcher
 After=network-online.target watcher-api.service
 Wants=network-online.target
@@ -15,6 +15,12 @@ ExecStart=/usr/bin/node /opt/watcher/apps/poller/src/index.js
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
+# The trap (162/udp) and syslog (514/udp) receivers need a privileged port.
+# Granting exactly that capability is the alternative to running the poller
+# as root; both are ambient so the unprivileged process keeps it after the
+# user switch. Harmless when TRAP_PORT/SYSLOG_PORT are unset — nothing binds.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/watcher /tmp

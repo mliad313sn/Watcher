@@ -7,6 +7,8 @@
     ".": "./src/index.js",
     "./severity": "./src/severity.js",
     "./nagios-states": "./src/nagios-states.js",
-    "./discovery-engine": "./src/discovery-engine.js"
+    "./discovery-engine": "./src/discovery-engine.js",
+    "./syslog": "./src/syslog.js",
+    "./events": "./src/events.js"
   }
 }
