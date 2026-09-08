@@ -33,3 +33,52 @@ Notes for larger estates:
 Harness: 20 concurrent workers per endpoint, sequential endpoint sweep,
 latency includes full body download. Re-run: `node /tmp/loadtest.mjs`
 (script in repo history / trivially reproduced from this table's method).
+
+## 1.1 ingest throughput
+
+Every collection path added in 1.1 is a UDP listener, and a listener that
+cannot keep up does not return an error to anybody — it drops datagrams in
+the kernel, and the monitoring system reports that everything is fine. The
+failure is invisible, so the headroom is measured rather than assumed.
+
+`npm run bench:ingest` measures the **code added in 1.1** with the datastores
+replaced by doubles. It answers "can the parser, the rule engine and the
+aggregator keep up with a real device estate". It deliberately does not
+measure Postgres, TimescaleDB or Redis; `scripts/loadtest.mjs` drives the
+real stack over HTTP for that.
+
+```
+measured against datastore doubles — this is the added code, not the databases
+
+  syslog parse (RFC 3164 + 5424 mixed)                                927711/s   (200,000 in 216ms)
+  rule evaluation (40 rules, match on the last)                       696836/s   (200,000 in 287ms)
+  event pipeline end to end (identify → store → decide → publish)     324957/s   (100,000 in 308ms)
+  NetFlow v5 decode                                                  4411664 records/s   (300,000 in 68ms)
+  flow aggregation key                                              14137862/s   (500,000 in 35ms)
+  config normalise + hash (1200-line config)                            1466/s   (2,000 in 1364ms)
+  config diff (1200 lines, one changed)                                   62/s   (500 in 8041ms)
+
+  flow aggregation reduction                                       60,000 records → 30 rows (2000×)
+
+  node v22.22.2
+```
+
+### Reading these
+
+- **309 000 events/second through the whole event pipeline** — identify the
+  sender, rate-limit, store, evaluate 40 rules, publish. A thousand devices
+  each emitting a syslog line every second is 1 000/s, so the headroom is
+  roughly three hundredfold. The per-source admission ceiling (200/minute)
+  binds long before the code does, which is the intended order.
+- **4.6 million flow records/second decoded.** Flow is the highest-volume
+  input by an order of magnitude, and decoding is not where it hurts.
+- **2000× aggregation reduction** — 60 000 records folded to 30 rows. This is
+  the number the whole flow design rests on: storing one row per conversation
+  is a write path that fails on the first real link, and this is the measured
+  size of the reduction that avoids it.
+- **Config diff is the slowest path at ~15 ms for a 1 200-line
+  configuration**, which is a nightly job against a few hundred devices —
+  seconds of work in total. It is bounded at 25 million LCS cells (100 MB);
+  past that a diff is summarised rather than allocated. That bound came from
+  this benchmark: the previous per-side limit of 20 000 lines permitted a
+  1.6 GB allocation on a chassis configuration.

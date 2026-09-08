@@ -1,6 +1,6 @@
 {
   "name": "@watcher/shared",
-  "version": "1.1.0-rc.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,6 +12,7 @@
     "./events": "./src/events.js",
     "./flow": "./src/flow.js",
     "./forward": "./src/forward.js",
-    "./config-drift": "./src/config-drift.js"
+    "./config-drift": "./src/config-drift.js",
+    "./sql-split": "./src/sql-split.js"
   }
 }

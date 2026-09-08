@@ -84,6 +84,20 @@ generic event API inbound, and Prometheus exposition outbound — see
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Upgrading
+
+There is a migration runner from 1.1.0 onward:
+
+```bash
+npm run migrate:status   # what is applied, what is pending
+npm run migrate          # apply it
+```
+
+Safe to run repeatedly, on a fresh database or an existing one. A database
+that predates the runner is adopted rather than re-initialised. Upgrading
+from 1.0.0 — including why this was a blocker — is in
+[docs/UPGRADING.md](docs/UPGRADING.md).
+
 ## Repository layout
 
 ```

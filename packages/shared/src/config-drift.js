@@ -221,18 +221,32 @@ export function configHash(normalised) {
 }
 
 /**
+ * The largest LCS table we will allocate: 25 million cells, so 100 MB at
+ * four bytes each. A 5 000-line configuration against another 5 000-line one
+ * fits; anything larger is summarised instead.
+ */
+export const MAX_LCS_CELLS = 25_000_000;
+
+/**
  * A unified diff, without a dependency.
  *
- * Longest common subsequence over lines. Configurations are thousands of
- * lines and a full LCS matrix is O(n·m) in memory, so anything past the
- * bound falls back to a plain summary rather than allocating gigabytes to
- * pretty-print a diff nobody will read line by line anyway.
+ * Longest common subsequence over lines. The matrix is O(n·m) in memory, so
+ * anything past the bound falls back to a plain summary rather than
+ * allocating gigabytes to pretty-print a diff nobody would read line by line
+ * anyway. Measured at roughly 100 million cells per second, so the bound is
+ * also about a quarter-second of work.
  */
-export function diffConfigs(before, after, { maxLines = 20_000, context = 3 } = {}) {
+export function diffConfigs(before, after, { maxCells = MAX_LCS_CELLS, context = 3 } = {}) {
   const a = String(before ?? '').split('\n');
   const b = String(after ?? '').split('\n');
 
-  if (a.length > maxLines || b.length > maxLines) {
+  /* Bound the PRODUCT, not each side. The table is a.length × b.length
+     four-byte cells, so a per-side limit of 20 000 lines — which a chassis
+     with many VRFs reaches — permits a 1.6 GB allocation and takes the
+     process out with it. Bounding cells also keeps the useful asymmetric
+     case: a 60 000-line configuration diffed against a 200-line one is
+     twelve million cells and perfectly affordable. */
+  if (a.length * b.length > maxCells) {
     return {
       truncated: true,
       added: Math.max(0, b.length - a.length),

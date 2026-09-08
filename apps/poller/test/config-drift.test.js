@@ -255,3 +255,34 @@ test('every vendor profile carries a command and a label', () => {
 test('an unknown vendor falls back to generic rather than throwing', () => {
   assert.equal(normaliseConfig('hostname sw1', 'not-a-vendor'), 'hostname sw1');
 });
+
+test('the diff table is bounded by cells, not by lines', async () => {
+  // Found by scripts/ingest-bench.mjs: a per-side limit of 20 000 lines —
+  // which a chassis with many VRFs reaches — permits a 20k × 20k table of
+  // four-byte cells, which is 1.6 GB and takes the process with it.
+  const { MAX_LCS_CELLS } = await import('@watcher/shared/config-drift');
+  const side = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 100;
+  const huge = Array.from({ length: side }, (_, i) => `line${i}`).join('\n');
+
+  const d = diffConfigs(huge, `${huge}\nextra`);
+  assert.equal(d.truncated, true, 'summarised rather than allocated');
+  assert.equal(d.hunks.length, 0);
+});
+
+test('a very long configuration still diffs against a short one', () => {
+  // The asymmetric case a per-side limit would have refused for no reason:
+  // 60 000 lines against 200 is twelve million cells and quite affordable.
+  const long = Array.from({ length: 60_000 }, (_, i) => `line${i}`).join('\n');
+  const short = Array.from({ length: 200 }, (_, i) => `line${i}`).join('\n');
+  const d = diffConfigs(long, short);
+  assert.equal(d.truncated, false);
+  assert.ok(d.removed > 0);
+});
+
+test('an ordinary pair of configurations is still diffed line by line', () => {
+  const base = Array.from({ length: 3_000 }, (_, i) => `line${i}`).join('\n');
+  const d = diffConfigs(base, base.replace('line1500', 'line1500-changed'));
+  assert.equal(d.truncated, false);
+  assert.equal(d.added, 1);
+  assert.equal(d.removed, 1);
+});

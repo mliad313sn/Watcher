@@ -5,6 +5,7 @@ export * from './events.js';
 export * from './flow.js';
 export * from './forward.js';
 export * from './config-drift.js';
+export * from './sql-split.js';
 
 /** Redis key/channel names — single source of truth across services. */
 export const REDIS_KEYS = Object.freeze({

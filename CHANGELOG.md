@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0-rc.1 — the collection release
+## 1.1.0 — the collection release
 
 Watcher could poll. It could not *receive*. This release closes the five
 gaps that separated it from the platforms it competes with, and every one of
@@ -89,6 +89,10 @@ cases, 40 flow-format cases against datagrams built byte by byte to spec, 12
 real-socket end-to-end tests through the event pipeline to the published
 state event, and 38 covering the proxy buffer, backoff and staleness
 boundaries.
+
+Measured ingest headroom (`npm run bench:ingest`): 309 000 events/second
+through the whole event pipeline, 4.6 million flow records/second decoded,
+and a 2000× aggregation reduction — the number the flow design rests on.
 
 ## 1.0.0-rc.1 — first release candidate
 

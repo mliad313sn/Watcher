@@ -1,6 +1,6 @@
 {
   "name": "watcher",
-  "version": "1.1.0-rc.1",
+  "version": "1.1.0",
   "private": true,
   "description": "Enterprise network & systems monitoring platform \u2014 Nagios Core engine, Fastify middleware, TimescaleDB metrics, multi-page dashboard UI",
   "type": "module",
@@ -17,7 +17,10 @@
     "seed:demo": "npm run seed:demo --workspace apps/api",
     "build:web": "npm run build --workspace apps/web",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:status": "node scripts/migrate.mjs --status",
+    "bench:ingest": "node scripts/ingest-bench.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
