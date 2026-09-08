@@ -1,0 +1,1601 @@
+From d871e9711ecee1a34d6690fdc1fd2b623f3f2a6e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 8 Sep 2026 22:23:27 +0000
+Subject: [PATCH 1/2] Fix the first-run blocker, and record before-images on
+ register updates
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two findings from using Meridian to run a real delivery programme — five
+projects, seventeen stages, four gates each, nine RAID items — over a
+working day.
+
+1. Following README.md exactly produces an empty instance.
+
+   The README says: "With no DATABASE_URL the server runs PGlite from
+   server/.data/pgdata". It does not. `.env.example` sets PGLITE_DIR, but
+   nothing loads `.env` — dotenv is not a dependency and is imported
+   nowhere — so PGLITE_DIR is unset and the fallback is an in-memory
+   database.
+
+   The failure is silent and total. `npm run seed` reports "seeded 12
+   projects · 10 users" and that database dies with the process; `npm run
+   dev` opens a fresh empty one; the sign-in screen offers no accounts
+   (/api/auth/accounts returns seeded:false) and every documented password
+   is refused. Nothing in the output suggests what happened.
+
+   Fixed by making the code do what the README says: the default data
+   directory is server/.data/pgdata, resolved from db.js rather than from
+   the working directory so all three commands agree wherever they are run
+   from. An explicitly passed dataDir still wins, including `null` — that
+   is how view-render and usecase-sweep ask for a throwaway in-memory
+   instance, and they must keep getting one or a sweep would overwrite the
+   real book.
+
+   Also: PGlite creates the last path element only, so a data directory
+   whose parent is missing fails with ENOENT before it opens. mkdir -p
+   first.
+
+2. Closing a register item recorded no before-image.
+
+   audit_event carries before_json/after_json and record() writes them, but
+   among the audited() call sites they are passed on deletions and on a few
+   exceptional acts (gate override, re-baseline) — not on ordinary updates.
+   Over 181 audit rows written by the campaign above, none carried a
+   before-image, including eight "Item closed" rows.
+
+   That is the wrong way round for a register: items are closed constantly
+   and deleted almost never, and "who closed this risk, and what did it say
+   before?" is the first question asked at review. The trail could say a
+   risk was closed and by whom, but not what it had been.
+
+   PATCH /api/raid/:id now passes the prior status, title, detail,
+   probability, impact, response and owner, plus the patch as the after-
+   image. The same gap remains on other update routes and is worth the same
+   treatment; this fixes the one that matters most.
+
+Verified: 449 tests pass, the nine audit gates pass, the build passes, and
+a clean clone now reaches a signed-in session with `npm install && npm run
+seed && npm run dev` and no environment variables.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UAjZnbKQNX8rHutySV6b3R
+---
+ server/src/db.js               | 29 +++++++++++++++++++++++++++--
+ server/src/routes/portfolio.js | 12 +++++++++++-
+ 2 files changed, 38 insertions(+), 3 deletions(-)
+
+diff --git a/server/src/db.js b/server/src/db.js
+index 73c5c8e..1df883a 100644
+--- a/server/src/db.js
++++ b/server/src/db.js
+@@ -9,6 +9,7 @@
+  * runs in production. Nothing above this file knows which is in use.
+  */
+ 
++import { mkdirSync } from "node:fs";
+ import { readdir, readFile } from "node:fs/promises";
+ import { dirname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -148,6 +149,9 @@ async function clearStaleLocks(dataDir) {
+ 
+ async function openPglite(dataDir) {
+   const { PGlite } = await import("@electric-sql/pglite");
++  /* PGlite creates the last path element, not the whole path, so a data
++     directory whose parent is missing fails with ENOENT before it opens. */
++  if (dataDir) mkdirSync(dataDir, { recursive: true });
+   await clearStaleLocks(dataDir);
+   const pglite = dataDir ? new PGlite(dataDir) : new PGlite();
+   await pglite.waitReady;
+@@ -220,10 +224,31 @@ async function openPglite(dataDir) {
+ 
+ /* ── lifecycle ────────────────────────────────────────────────────── */
+ 
++/* The directory README.md promises: "with no DATABASE_URL the server runs
++   PGlite from server/.data/pgdata". It did not, because nothing loads
++   `.env` — `dotenv` is not a dependency and is imported nowhere — so
++   PGLITE_DIR was never set and the fallback was an in-memory database. The
++   consequence was silent and total: `npm run seed` seeded a database that
++   died with the process, `npm run dev` then opened a fresh empty one, and
++   the sign-in screen offered no accounts at all. Following the three
++   commands in the README produced an instance with nothing in it.
++
++   Resolved from this file rather than from the working directory, so it is
++   the same database whichever command is run and from wherever. */
++const DEFAULT_PGLITE_DIR = join(HERE, "..", ".data", "pgdata");
++
+ export async function connect(opts = {}) {
+   const url = opts.url ?? process.env.DATABASE_URL;
+-  if (url) impl = await openPg(url);
+-  else impl = await openPglite(opts.dataDir ?? process.env.PGLITE_DIR ?? null);
++  if (url) { impl = await openPg(url); }
++  else {
++    /* An explicitly passed dataDir wins — including `null`, which is how the
++       audit harnesses ask for a throwaway in-memory instance and must keep
++       doing, or a sweep would overwrite the real book. */
++    const dataDir = "dataDir" in opts
++      ? opts.dataDir
++      : (process.env.PGLITE_DIR || DEFAULT_PGLITE_DIR);
++    impl = await openPglite(dataDir);
++  }
+   engineName = impl.name;
+   return impl;
+ }
+diff --git a/server/src/routes/portfolio.js b/server/src/routes/portfolio.js
+index 76861f3..afca211 100644
+--- a/server/src/routes/portfolio.js
++++ b/server/src/routes/portfolio.js
+@@ -853,7 +853,17 @@ r.patch("/raid/:id", async (req, res, next) => {
+ 
+     const out = await audited(req.user,
+       { action: b.status === "Closed" ? "Item closed" : "Item updated",
+-        entity: "raid_item", entityId: item.id, detail: b.title ?? item.title },
++        entity: "raid_item", entityId: item.id, detail: b.title ?? item.title,
++        /* "Who closed this risk, and what did it say before?" is the first
++           question asked of a register at review. Deletion carried a
++           before-image and closure did not, which is the wrong way round:
++           register items are closed constantly and deleted almost never. */
++        before: {
++          status: item.status, title: item.title, detail: item.detail,
++          probability: item.probability, impact: item.impact,
++          response: item.response, owner_id: item.owner_id,
++        },
++        after: patch },
+       async (t) => conflict(await updateVersioned(t, "raid_item", item.id, requiredVersion(b, "register item"), patch)));
+     res.json({ version: out.version });
+   } catch (e) { next(e); }
+-- 
+2.43.0
+
+
+From dce3ed57519507f050a4ab763d417b76dc8feea9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 8 Sep 2026 23:06:43 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?INT-10=20=C2=B7=20the=20bridge=20to=20where?=
+ =?UTF-8?q?=20the=20work=20happens,=20and=20before-images=20everywhere?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two improvements from an evaluation that used Meridian to govern a real
+delivery programme end to end. Both were named by this codebase before they
+were built.
+
+── INT-10 · the bridge ───────────────────────────────────────────────
+
+The evaluation's largest objection: Meridian is not where the work happens
+and had no bridge to where it does, so every stage completion was recorded
+twice — once in the engineering repository, once here. Re-entered status is
+stale status, and that is how a PMO tool stops being kept up to date, then
+stops being believed.
+
+v1.js already named the resolution — "les écritures viendront avec les
+intégrations qui les demandent, jamais avant" — and integrations.js named
+this exact item, INT-10 (Jira, Azure DevOps). This is that integration.
+
+No Jira connector. No Azure DevOps connector. The interoperability
+committee's "four surfaces instead of twenty connectors" was right: twenty
+connectors are twenty authentication debts, twenty formats that change
+without warning, and twenty reasons not to upgrade. What is added is ONE
+generic surface that knows the name of no tool.
+
+Three refusals make it safe:
+
+- A key cannot LINK. Attaching an external item to a stage is a session act
+  under the project's schedule.write. A stolen key cannot hang invented work
+  on any stage in a portfolio, nor decide a project is finished. It can say
+  only "this ticket, which somebody already attached here, is closed".
+- A key cannot write a PERCENTAGE. It reports item states; the stage's
+  percent becomes closed over linked. A system that could write "78%" makes
+  the number unverifiable, whereas "7 of 9" can be re-read, disputed and
+  traced to objects an auditor can go and look at. A pct in the request body
+  is ignored, and a test shows it.
+- Nothing is SILENT. Unknown items return in `unlinked` so an integrator can
+  see what still needs mapping rather than believing everything landed. A
+  stage a person edited between the read and the write returns in
+  `contended` and the next report picks it up — refusing a whole batch over
+  one row would be absurd, and overwriting it silently is exactly what
+  row_version exists to prevent.
+
+Every movement is audited under the integration's NAME, which is what
+migration 025 asked for: "« système » n'est pas une réponse à « qui a écrit
+cette ligne »".
+
+One drift was found while building it: the discovery endpoint listed its
+endpoints from a hand-kept array and so announced two doors on the day there
+were three. It now derives them from the OpenAPI description, which was
+already the source of truth for the contract.
+
+── Before-images on every update route ───────────────────────────────
+
+The first patch fixed PATCH /api/raid/:id by hand and said the gap remained
+elsewhere. This closes it in two places rather than forty.
+
+updateVersioned() now captures the row in the SAME statement that changes
+it — a FROM subquery evaluated against the snapshot at statement start, so
+the image cannot disagree with what was actually updated, and it costs no
+extra round trip. audited() fills it in when the call site did not name its
+own. Every update route records a before-image now, including the ones
+nobody thought to annotate.
+
+It rides back on a Symbol, so the two routes that return that object
+straight to the client did not start serialising whole rows. And
+`t.row_version + 1` is qualified, because `b` carries a column of the same
+name and Postgres calls the bare reference ambiguous — which is how the
+first attempt failed.
+
+── Verified ──────────────────────────────────────────────────────────
+
+468 tests pass (was 449), the nine static gates pass, and the build passes.
+Two existing tests pin the exact scope list and migration set and were
+updated — which is the point of having them: an addition has to be
+deliberate.
+
+docs/33-pont-suivi-de-taches.md carries the contract, the three refusals,
+what the bridge deliberately does NOT do, and a GitHub Actions example.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UAjZnbKQNX8rHutySV6b3R
+---
+ README.md                            |   6 +-
+ docs/33-pont-suivi-de-taches.md      | 198 ++++++++++++++
+ docs/openapi.v1.json                 |  65 ++++-
+ package-lock.json                    |  42 ---
+ server/migrations/034_work_links.sql |  77 ++++++
+ server/src/audit.js                  |  15 +-
+ server/src/db.js                     |  32 ++-
+ server/src/integrations.js           |  11 +-
+ server/src/openapi.js                |  39 +++
+ server/src/routes/portfolio.js       |  83 ++++++
+ server/src/routes/v1.js              | 119 ++++++++-
+ server/test/persistence.test.js      |   2 +-
+ server/test/worklink.test.js         | 370 +++++++++++++++++++++++++++
+ 13 files changed, 999 insertions(+), 60 deletions(-)
+ create mode 100644 docs/33-pont-suivi-de-taches.md
+ create mode 100644 server/migrations/034_work_links.sql
+ create mode 100644 server/test/worklink.test.js
+
+diff --git a/README.md b/README.md
+index 5aec016..6c87b8b 100644
+--- a/README.md
++++ b/README.md
+@@ -37,7 +37,10 @@ it over a generic work tracker:
+ 
+ **It is not** a task manager, a time-and-billing system, an ITSM tool, or
+ an agile team board. It sits above those and reports on the work they
+-carry out.
++carry out — and since INT-10 it can be *told* what they carry out rather
++than having it re-typed: a work tracker posts the state of items a person
++has linked to a stage, and the stage's percent complete becomes closed over
++linked. See [`docs/33-pont-suivi-de-taches.md`](docs/33-pont-suivi-de-taches.md).
+ 
+ ## What you are not getting
+ 
+@@ -205,6 +208,7 @@ never a silent overwrite.
+ | [`docs/29-comite-international-saas.md`](docs/29-comite-international-saas.md) | International, SaaS & multi-tenant committee (FR) — instance-per-tenant decided, the language registry, and PostgreSQL required in service |
+ | [`docs/30-vues-restitution.md`](docs/30-vues-restitution.md) | The `reporting.*` read contract — fourteen stable SQL views for Power BI, Excel, Tableau, Qlik |
+ | [`docs/31-preuves-sharepoint.md`](docs/31-preuves-sharepoint.md) | SharePoint/OneDrive as evidence hosts — the recipe, and what the probe can honestly say |
++| [`docs/33-pont-suivi-de-taches.md`](docs/33-pont-suivi-de-taches.md) | The bridge to where the work happens (FR) — `POST /api/v1/progress`, and why a key may report states but never a percentage |
+ 
+ ---
+ 
+diff --git a/docs/33-pont-suivi-de-taches.md b/docs/33-pont-suivi-de-taches.md
+new file mode 100644
+index 0000000..394041b
+--- /dev/null
++++ b/docs/33-pont-suivi-de-taches.md
+@@ -0,0 +1,198 @@
++# 33 · Le pont vers là où le travail se fait (INT-10)
++
++**Le constat qui décide d'une adoption.** Meridian n'est pas l'endroit où le
++travail se fait, et l'assume : *« ce n'est pas un gestionnaire de tâches, ni
++un tableau d'équipe agile »*. Mais l'équipe livre dans Jira, Azure DevOps ou
++GitHub, et jusqu'ici l'avancement était donc saisi **deux fois** — une fois
++là où le travail se fait, une fois ici.
++
++Un avancement re-saisi est un avancement périmé. C'est ainsi qu'un outil de
++PMO cesse d'être tenu à jour, puis cesse d'être cru, puis cesse d'être
++ouvert.
++
++`server/src/routes/v1.js` annonçait exactement l'issue : *« les écritures
++viendront avec les intégrations qui les demandent, jamais avant »*. C'est
++l'intégration qui les demande, et elle est la première.
++
++---
++
++## Ce qui est délibérément refusé
++
++**Pas de connecteur Jira. Pas de connecteur Azure DevOps.** Le comité
++d'interopérabilité a tranché « quatre surfaces plutôt que vingt connecteurs »
++et il avait raison : vingt connecteurs, ce sont vingt dettes
++d'authentification, vingt formats qui changent sans prévenir, et vingt
++raisons de ne pas mettre le produit à jour.
++
++Ce qui s'ajoute est **une** surface générique que n'importe quel suivi de
++tâches sait appeler — un POST avec une clé — et qui ne connaît le nom
++d'aucun outil.
++
++## L'autorité reste où elle était
++
++| | Qui |
++|---|---|
++| **Rattacher** un élément externe à une étape | une **personne**, session, sous `schedule.write` du projet |
++| **Rapporter** l'état d'un élément déjà rattaché | une **clé**, portée `write:progress` |
++
++Une clé volée ne peut donc ni inventer du travail, ni l'accrocher à
++n'importe quelle étape d'un portefeuille, ni décider qu'un projet est
++terminé. Elle ne peut dire qu'une chose : *« ce ticket, que quelqu'un a déjà
++rattaché ici, est fermé »*.
++
++C'est la règle du produit appliquée sans exception. Les tests la tiennent :
++une clé qui poste sur `/api/worklinks` reçoit 401, et un lecteur qui voit le
++projet reçoit 403.
++
++## L'avancement se déduit, il ne s'écrit pas
++
++L'intégration **n'envoie jamais un pourcentage**. Elle envoie des états
++d'éléments ; le pourcentage de l'étape est le rapport des fermés sur les
++liés.
++
++```
++9 éléments liés · 7 fermés  →  l'étape est à 78 %
++```
++
++Un système externe qui pourrait écrire « 78 % » rendrait la valeur
++**invérifiable**. « 7 sur 9 » se relit, se conteste, et se rattache à des
++objets qu'un auditeur peut aller voir. Un `pct` présent dans le corps de la
++requête est ignoré, et un test le montre.
++
++Rouvrir un ticket fait redescendre l'étape : du travail rouvert est du
++travail à refaire.
++
++---
++
++## Le contrat
++
++```http
++POST /api/v1/progress
++X-API-Key: <clé portant write:progress>
++
++{
++  "system": "jira",
++  "items": [
++    { "externalId": "10001", "key": "OPS-1423", "state": "closed",
++      "title": "Close the ingest gap", "url": "https://…" },
++    { "externalId": "10002", "key": "OPS-1424", "state": "open" }
++  ]
++}
++```
++
++```json
++{
++  "contract": "v1",
++  "generatedAt": "2026-09-08T22:40:00.000Z",
++  "updated":  [{ "activity": "PRJ-147-A9", "name": "…",
++                 "was": 50, "now": 75, "closed": 3, "of": 4 }],
++  "unlinked": ["10099"],
++  "unchanged": 2,
++  "contended": []
++}
++```
++
++Quatre champs, et chacun répond à une question qu'un intégrateur se pose :
++
++- **`updated`** — ce qui a bougé, et de combien à combien. Lisible dans un
++  journal de synchronisation sans rien interroger d'autre.
++- **`unlinked`** — les éléments que cette instance ne connaît pas. **Jamais
++  ignorés en silence** : c'est ce qui reste à cartographier, et un
++  intégrateur doit pouvoir le voir plutôt que croire que tout est passé.
++- **`unchanged`** — les éléments dont l'état n'a pas bougé. Un rapport
++  identique au précédent n'écrit rien et **n'audite rien** ; répéter un
++  rapport toutes les cinq minutes ne remplit donc pas la piste.
++- **`contended`** — les étapes qu'une personne a modifiées entre la lecture
++  et l'écriture. Pour un humain c'est un 409 « rechargez » ; refuser tout un
++  lot à cause d'une ligne serait absurde, alors l'étape est signalée et le
++  rapport suivant la reprend. **Ce qui n'arrive jamais, c'est l'écrasement
++  silencieux** — c'est précisément ce que `row_version` existe pour empêcher.
++
++`externalId` est l'identifiant **stable** de la source (un id numérique, un
++GUID), jamais la référence lisible : celle-ci change quand un ticket est
++déplacé de projet, et le lien serait alors perdu. La référence lisible
++(`key`) est gardée pour que l'écran montre ce que l'équipe dit à voix haute.
++
++Deux états seulement, `open` et `closed`. Les colonnes intermédiaires d'un
++tableau d'équipe sont l'affaire de l'équipe, pas celle du portefeuille.
++
++Au plus 1000 éléments par appel.
++
++## Rattacher
++
++```http
++POST /api/worklinks          (session, schedule.write)
++{ "activity": "PRJ-147-A9", "system": "jira",
++  "externalId": "10001", "externalKey": "OPS-1423", "title": "…" }
++
++GET    /api/worklinks
++DELETE /api/worklinks/:id
++```
++
++Un élément ne se rattache qu'à **une** étape : deux étapes qui se partagent
++un ticket, ce sont deux avancements qui se contredisent. La contrainte est
++dans la base, et le refus le dit.
++
++Délier garde la trace de ce que le lien disait — l'image d'avant est dans la
++piste.
++
++## La trace
++
++Chaque mouvement d'avancement est audité **au nom de l'intégration**, jamais
++« système » :
++
++```
++Azure DevOps — plateforme (service)
++  Progress reported · PRJ-147-A9
++  « Collector — 3/4 item(s) closed (50% → 75%), reported by ado »
++  before_json: { "pct": 50, … }
++```
++
++C'est ce que la migration 025 demandait : *« un NOM dans la piste d'audit ;
++"système" n'est pas une réponse à "qui a écrit cette ligne" »*.
++
++---
++
++## Câbler un suivi de tâches
++
++Rien à installer côté Meridian. Du côté du suivi de tâches, un webhook ou un
++travail périodique qui poste les éléments qu'il vient de fermer.
++
++**GitHub Actions**, par exemple :
++
++```yaml
++on:
++  issues:
++    types: [closed, reopened]
++jobs:
++  report:
++    runs-on: ubuntu-latest
++    steps:
++      - run: |
++          curl -sS -X POST "$MERIDIAN/api/v1/progress" \
++            -H "X-API-Key: $MERIDIAN_KEY" \
++            -H "content-type: application/json" \
++            -d '{"system":"github","items":[{
++                  "externalId":"${{ github.event.issue.id }}",
++                  "key":"#${{ github.event.issue.number }}",
++                  "title":${{ toJSON(github.event.issue.title) }},
++                  "url":"${{ github.event.issue.html_url }}",
++                  "state":"${{ github.event.issue.state }}"}]}'
++        env:
++          MERIDIAN: ${{ secrets.MERIDIAN_URL }}
++          MERIDIAN_KEY: ${{ secrets.MERIDIAN_KEY }}
++```
++
++Un JQL périodique pour Jira, une requête WIQL pour Azure DevOps : la forme
++est la même, et aucune des deux n'a de code dans ce dépôt.
++
++## Ce que cela ne fait pas
++
++- **Pas de sens inverse.** Meridian ne crée pas de tickets. Un portefeuille
++  qui écrit dans le tableau d'une équipe est un portefeuille qui décide du
++  travail de l'équipe, et ce n'est pas le rôle qu'il tient.
++- **Pas de rattachement automatique.** Deviner qu'un ticket appartient à une
++  étape parce que leurs titres se ressemblent produirait un avancement que
++  personne n'a décidé.
++- **Pas de dates.** Un ticket fermé dit qu'un travail est fait, pas quand
++  l'étape se termine. Le calendrier reste l'affaire du chef de projet.
+diff --git a/docs/openapi.v1.json b/docs/openapi.v1.json
+index edbb815..1ba7d30 100644
+--- a/docs/openapi.v1.json
++++ b/docs/openapi.v1.json
+@@ -2,7 +2,7 @@
+   "openapi": "3.1.0",
+   "info": {
+     "title": "Meridian IT-PMO",
+-    "version": "5.3.0",
++    "version": "5.9.0",
+     "summary": "Read a governed project portfolio, and the trail of how it got that way",
+     "description": "The surface other systems read. It is versioned in the path: the day the shape has to change it becomes /api/v2, so that nobody has to guess. Authentication is a key issued per connected system, carrying explicit scopes; the product never stores the key itself, only its fingerprint.\n\nThere is no write surface yet, and that is deliberate: a scope is only published once a route honours it. Declaring one earlier would advertise a door that does not exist and imply it is guarded.",
+     "license": {
+@@ -27,7 +27,8 @@
+     },
+     "x-scopes": {
+       "read:portfolio": "Read the portfolio — projects, schedule, money, risks, benefits",
+-      "read:audit": "Read the audit trail — every recorded decision and change"
++      "read:audit": "Read the audit trail — every recorded decision and change",
++      "write:progress": "Report whether linked work items are open or closed — never a percentage"
+     }
+   },
+   "security": [
+@@ -177,6 +178,66 @@
+         }
+       }
+     },
++    "/api/v1/progress": {
++      "post": {
++        "summary": "Report the state of linked work items",
++        "description": "The bridge to where the work actually happens. A work tracker posts the state of items a PERSON has already linked to a stage, and each affected stage's percent complete becomes closed items over linked items. Deliberately not a percentage: a system that could write \"90%\" makes the number unverifiable, whereas \"9 of 10 items\" can be re-read, disputed, and traced to objects an auditor can go and look at. Items this instance does not know are returned as unlinked rather than silently ignored, so an integrator can see what still needs mapping. A stage a person edited between the read and the write is reported as contended and picked up by the next report — refusing a whole batch over one row would be absurd, and overwriting it silently is what optimistic concurrency exists to prevent.",
++        "security": [
++          {
++            "apiKey": []
++          }
++        ],
++        "x-required-scope": "write:progress",
++        "responses": {
++          "200": {
++            "description": "The document described above",
++            "content": {
++              "application/json": {
++                "schema": {
++                  "type": "object",
++                  "properties": {
++                    "contract": {
++                      "type": "string"
++                    },
++                    "generatedAt": {
++                      "type": "string",
++                      "format": "date-time"
++                    },
++                    "updated": {
++                      "type": "array",
++                      "items": {
++                        "type": "object"
++                      }
++                    },
++                    "unlinked": {
++                      "type": "array",
++                      "items": {
++                        "type": "string"
++                      }
++                    },
++                    "unchanged": {
++                      "type": "number"
++                    },
++                    "contended": {
++                      "type": "array",
++                      "items": {
++                        "type": "string"
++                      }
++                    }
++                  }
++                }
++              }
++            }
++          },
++          "401": {
++            "description": "No key, an unknown key, or a revoked key — the three are indistinguishable on purpose"
++          },
++          "403": {
++            "description": "The key is live but does not carry the scope this route requires"
++          }
++        }
++      }
++    },
+     "/api/v1": {
+       "get": {
+         "summary": "What this contract serves, and what your key may reach",
+diff --git a/package-lock.json b/package-lock.json
+index e56945d..8495e50 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -722,9 +722,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -826,9 +823,6 @@
+         "arm"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -843,9 +837,6 @@
+         "arm"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -860,9 +851,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -877,9 +865,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -894,9 +879,6 @@
+         "loong64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -911,9 +893,6 @@
+         "loong64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -928,9 +907,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -945,9 +921,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -962,9 +935,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -979,9 +949,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -996,9 +963,6 @@
+         "s390x"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1013,9 +977,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1030,9 +991,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+diff --git a/server/migrations/034_work_links.sql b/server/migrations/034_work_links.sql
+new file mode 100644
+index 0000000..e8194a6
+--- /dev/null
++++ b/server/migrations/034_work_links.sql
+@@ -0,0 +1,77 @@
++-- ═══════════════════════════════════════════════════════════════════
++-- 034 · LE PONT VERS LÀ OÙ LE TRAVAIL SE FAIT  (INT-10)
++--
++-- Le constat le plus dur du comité de marché, et celui qui décide d'une
++-- adoption : Meridian n'est pas l'endroit où le travail se fait, et il
++-- n'avait aucun pont vers l'endroit où il se fait. L'équipe livre dans
++-- Jira, Azure DevOps ou GitHub ; l'avancement était donc saisi DEUX fois.
++-- Et un avancement re-saisi est un avancement périmé — c'est ainsi qu'un
++-- outil de PMO cesse d'être tenu à jour, puis cesse d'être cru.
++--
++-- `server/src/routes/v1.js` annonçait exactement ceci : « les écritures
++-- viendront avec les intégrations qui les demandent, jamais avant ».
++-- C'est l'intégration qui les demande.
++--
++-- ── Ce qui est délibérément REFUSÉ ────────────────────────────────
++--
++-- Pas de connecteur Jira. Pas de connecteur Azure DevOps. Le comité
++-- d'interopérabilité a tranché « quatre surfaces plutôt que vingt
++-- connecteurs », et il avait raison : vingt connecteurs, ce sont vingt
++-- dettes d'authentification, vingt formats qui changent sans prévenir, et
++-- vingt raisons de ne pas mettre à jour le produit. Ce qui s'ajoute ici
++-- est UNE surface générique que n'importe quel suivi de tâches sait
++-- appeler, avec sa propre clé et sa propre portée.
++--
++-- ── L'AUTORITÉ reste où elle était ────────────────────────────────
++--
++-- Le lien entre un élément externe et une étape est créé par une
++-- PERSONNE, avec une session, sous `schedule.write` du projet concerné.
++-- L'intégration ne peut que RAPPORTER l'état d'un lien qui existe déjà.
++--
++-- C'est la règle du produit appliquée sans exception : une clé volée ne
++-- doit pas pouvoir rattacher du travail inventé à n'importe quelle étape
++-- d'un portefeuille, ni décider qu'un projet est terminé. Elle ne peut
++-- dire que « ce ticket, que quelqu'un a déjà rattaché ici, est fermé ».
++--
++-- ── Pourquoi l'avancement se DÉDUIT au lieu d'être écrit ──────────
++--
++-- L'intégration n'envoie jamais un pourcentage. Elle envoie des états
++-- d'éléments ; le pourcentage de l'étape est le rapport des éléments
++-- fermés sur les éléments liés. Un système externe qui pourrait écrire
++-- « 90 % » directement rendrait la valeur invérifiable — alors que
++-- « 9 tickets sur 10 » se relit, se conteste, et se rattache à des
++-- objets qu'un auditeur peut aller voir.
++
++CREATE TABLE work_link (
++  id             text PRIMARY KEY,
++  activity_id    text NOT NULL REFERENCES activity(id) ON DELETE CASCADE,
++  -- « jira », « ado », « github »… nommé par celui qui crée le lien ; le
++  -- produit n'a pas de liste fermée, et n'en veut pas.
++  system         text NOT NULL,
++  -- L'identifiant stable côté source (un id numérique, un GUID). C'est lui
++  -- qui sert de clé, jamais la référence lisible : celle-ci change quand un
++  -- ticket est déplacé de projet, et le lien serait alors perdu.
++  external_id    text NOT NULL,
++  -- La référence lisible (« OPS-1423 »), pour que l'écran montre ce que
++  -- l'équipe dit à voix haute.
++  external_key   text NOT NULL DEFAULT '',
++  title          text NOT NULL DEFAULT '',
++  url            text NOT NULL DEFAULT '',
++  -- « open » | « closed ». Deux états, parce que c'est tout ce dont le
++  -- calcul a besoin : les colonnes intermédiaires d'un tableau d'équipe
++  -- sont l'affaire de l'équipe, pas celle du portefeuille.
++  state          text NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'closed')),
++  closed_on      date,
++  created_by     text REFERENCES app_user(id) ON DELETE SET NULL,
++  created_at     timestamptz NOT NULL DEFAULT now(),
++  -- Qui a rapporté l'état pour la dernière fois, et quand.
++  reported_by    text REFERENCES integration(id) ON DELETE SET NULL,
++  reported_at    timestamptz,
++  row_version    integer NOT NULL DEFAULT 1,
++  -- Un élément externe ne se rattache qu'à une étape : deux étapes qui se
++  -- partagent le même ticket, ce sont deux avancements qui se contredisent.
++  UNIQUE (system, external_id)
++);
++CREATE INDEX work_link_activity_idx ON work_link(activity_id);
++
++INSERT INTO id_counter (prefix, next_value) VALUES ('WL', 0);
+diff --git a/server/src/audit.js b/server/src/audit.js
+index d3e525f..42f1d05 100644
+--- a/server/src/audit.js
++++ b/server/src/audit.js
+@@ -12,7 +12,7 @@
+  *   · the actor is the authenticated session, never a constant.
+  */
+ 
+-import { many, tx } from "./db.js";
++import { BEFORE, many, tx } from "./db.js";
+ 
+ /**
+  * Write one audit row inside an existing transaction.
+@@ -45,7 +45,18 @@ export async function record(t, user, e) {
+ export async function audited(user, event, work) {
+   return tx(async (t) => {
+     const result = await work(t);
+-    await record(t, user, typeof event === "function" ? event(result) : event);
++    const e = typeof event === "function" ? event(result) : event;
++
++    /* An update made through updateVersioned() carries the row as it was.
++       Filling it in here means every update route records a before-image
++       instead of only the handful that remembered to pass one — and "who
++       closed this risk, and what did it say before?" is the first question
++       asked of a register at review. A call site that named its own image
++       still wins, because it knows better what is worth keeping. */
++    if (e.before === undefined && result && typeof result === "object" && result[BEFORE]) {
++      e.before = result[BEFORE];
++    }
++    await record(t, user, e);
+     return result;
+   });
+ }
+diff --git a/server/src/db.js b/server/src/db.js
+index 1df883a..671c609 100644
+--- a/server/src/db.js
++++ b/server/src/db.js
+@@ -459,6 +459,13 @@ export function requiredVersion(body, what) {
+  * assertion held. A caller that gets `false` re-reads and retries —
+  * it never gets a silent overwrite.
+  */
++/**
++ * Where an update carries the row as it was, so that `audited()` can record
++ * a before-image without every call site having to remember to. A Symbol
++ * because two routes return this object to the client unchanged.
++ */
++export const BEFORE = Symbol("before-image");
++
+ export async function updateVersioned(t, table, id, version, patch) {
+   const keys = Object.keys(patch);
+   /* PR-02 (comité de recette, docs/32) : un PATCH dont aucun champ n'est
+@@ -476,11 +483,28 @@ export async function updateVersioned(t, table, id, version, patch) {
+   const sets = keys.map((k, i) => `${k} = $${i + 1}`);
+   const params = keys.map((k) => patch[k]);
+   params.push(id, version);
++  /* The row as it was, captured in the same statement that changes it.
++     The FROM subquery is evaluated against the snapshot at statement start,
++     so `to_jsonb(b)` is the before-image — and taking it here rather than in
++     a separate SELECT means it cannot disagree with what was actually
++     updated, and costs no extra round trip.
++
++     It rides back on a Symbol so that the two routes which return this
++     object straight to the client do not start serialising whole rows. */
++  /* `t.row_version` on the right, not bare: `b` carries a column of the
++     same name and Postgres calls the unqualified reference ambiguous. */
+   const sql =
+-    `UPDATE ${table} SET ${sets.join(", ")}, row_version = row_version + 1 ` +
+-    `WHERE id = $${keys.length + 1} AND row_version = $${keys.length + 2} ` +
+-    `RETURNING row_version`;
++    `UPDATE ${table} AS t SET ${sets.join(", ")}, row_version = t.row_version + 1 ` +
++    `FROM (SELECT * FROM ${table} WHERE id = $${keys.length + 1}) AS b ` +
++    `WHERE t.id = $${keys.length + 1} AND t.row_version = $${keys.length + 2} ` +
++    `AND b.id = t.id ` +
++    `RETURNING t.row_version, to_jsonb(b) AS before_image`;
+   const r = await t.query(sql, params);
+   if (!r.rows.length) return { ok: false };
+-  return { ok: true, version: r.rows[0].row_version };
++
++  const out = { ok: true, version: r.rows[0].row_version };
++  Object.defineProperty(out, BEFORE, {
++    value: r.rows[0].before_image, enumerable: false,
++  });
++  return out;
+ }
+diff --git a/server/src/integrations.js b/server/src/integrations.js
+index 19eca9d..c4c6fd1 100644
+--- a/server/src/integrations.js
++++ b/server/src/integrations.js
+@@ -26,12 +26,19 @@ import { sha256hex, generateServiceKey } from "./federation.js";
+  * Il ne contient QUE ce que des routes servent réellement aujourd'hui.
+  * Déclarer `write:cost` avant qu'une route l'honore reviendrait à publier
+  * une porte qui n'existe pas et à laisser croire qu'elle est gardée. Les
+- * portées d'écriture arriveront avec les intégrations qui les demandent
+- * — INT-10 (Jira, Azure DevOps) et INT-11 (réalisé ERP) — et pas avant.
++ * portées d'écriture arrivent avec les intégrations qui les demandent —
++ * INT-10 (Jira, Azure DevOps) est arrivée ; INT-11 (réalisé ERP) n'a
++ * toujours pas de porte, et n'en aura pas avant d'en avoir besoin.
+  */
+ export const SCOPES = {
+   "read:portfolio": "Read the portfolio — projects, schedule, money, risks, benefits",
+   "read:audit": "Read the audit trail — every recorded decision and change",
++  /* INT-10 — la première portée d'écriture, et elle est étroite exprès.
++     Elle ne permet pas d'écrire un pourcentage : elle permet de dire
++     qu'un élément DÉJÀ RATTACHÉ par une personne est ouvert ou fermé.
++     L'avancement s'en déduit. Une clé volée ne peut donc ni inventer du
++     travail, ni décider qu'un projet est terminé. */
++  "write:progress": "Report whether linked work items are open or closed — never a percentage",
+ };
+ 
+ export const scopeList = () => Object.keys(SCOPES);
+diff --git a/server/src/openapi.js b/server/src/openapi.js
+index 584f01b..171e427 100644
+--- a/server/src/openapi.js
++++ b/server/src/openapi.js
+@@ -80,6 +80,26 @@ const DOCS = {
+       counts: "object", portfolio: "object",
+     },
+   },
++  "POST /api/v1/progress": {
++    summary: "Report the state of linked work items",
++    description:
++      "The bridge to where the work actually happens. A work tracker posts the " +
++      "state of items a PERSON has already linked to a stage, and each affected " +
++      "stage's percent complete becomes closed items over linked items. " +
++      "Deliberately not a percentage: a system that could write \"90%\" makes the " +
++      "number unverifiable, whereas \"9 of 10 items\" can be re-read, disputed, and " +
++      "traced to objects an auditor can go and look at. Items this instance does " +
++      "not know are returned as unlinked rather than silently ignored, so an " +
++      "integrator can see what still needs mapping. A stage a person edited " +
++      "between the read and the write is reported as contended and picked up by " +
++      "the next report — refusing a whole batch over one row would be absurd, and " +
++      "overwriting it silently is what optimistic concurrency exists to prevent.",
++    scope: "write:progress",
++    returns: {
++      contract: "string", generatedAt: "date-time", updated: "object[]",
++      unlinked: "string[]", unchanged: "number", contended: "string[]",
++    },
++  },
+   "GET /api/v1/audit": {
+     summary: "The audit trail — every recorded decision and change",
+     description:
+@@ -91,6 +111,25 @@ const DOCS = {
+   },
+ };
+ 
++/**
++ * Les portes qui demandent une portée, avec la portée qu'elles demandent.
++ *
++ * Lu par la route de découverte, qui les énumérait à la main — et une liste
++ * tenue à la main à côté d'une autre liste finit toujours par mentir : la
++ * découverte annonçait deux portes le jour où il y en avait trois. La
++ * description est déjà la source de vérité pour le contrat OpenAPI ; elle
++ * l'est maintenant aussi pour la découverte.
++ */
++export function scopedEndpoints() {
++  return Object.entries(DOCS)
++    .filter(([, doc]) => doc.scope)
++    .map(([k, doc]) => {
++      const [method, ...rest] = k.split(" ");
++      return { method, path: rest.join(" "), scope: doc.scope };
++    })
++    .sort((a, b) => (a.path + a.method).localeCompare(b.path + b.method));
++}
++
+ /** Ce que dit la description, mais que le routeur ne peut pas dire. */
+ export function documented() {
+   return Object.keys(DOCS).map((k) => {
+diff --git a/server/src/routes/portfolio.js b/server/src/routes/portfolio.js
+index afca211..5c5a819 100644
+--- a/server/src/routes/portfolio.js
++++ b/server/src/routes/portfolio.js
+@@ -2521,6 +2521,89 @@ r.delete("/documents/:id", async (req, res, next) => {
+ 
+ /* ── board ────────────────────────────────────────────────────────── */
+ 
++/* ── le pont vers le suivi de tâches (INT-10) ───────────────────────
++   Rattacher un élément externe à une étape est un acte de SESSION, sous
++   `schedule.write` du projet : l'autorité sur ce qui compte comme du
++   travail de ce projet appartient à la personne qui répond du projet, pas
++   à la clé d'un système tiers. L'intégration ne fait ensuite que
++   rapporter l'état de ce qui a été rattaché ici. */
++
++r.get("/worklinks", async (req, res, next) => {
++  try {
++    const rows = await many(
++      `SELECT w.*, a.project_id, a.name AS activity_name
++         FROM work_link w JOIN activity a ON a.id = w.activity_id
++        ORDER BY w.system, w.external_key`);
++    /* Filtré par ce que la personne a le droit de voir : un lien nomme un
++       ticket, et un titre de ticket décrit un travail qui n'est pas
++       forcément le sien à lire. */
++    const visible = [];
++    for (const row of rows) {
++      const p = await one(`SELECT * FROM project WHERE id = $1`, [row.project_id]);
++      if (p && can(req.user, "project.read", { project: p }).ok) visible.push(row);
++    }
++    res.json({ links: visible });
++  } catch (e) { next(e); }
++});
++
++r.post("/worklinks", async (req, res, next) => {
++  try {
++    const b = req.body ?? {};
++    if (!b.activity) bad("A link needs the stage it belongs to");
++    if (!b.system || !b.externalId) {
++      bad("A link needs the system it comes from and the item's stable identifier");
++    }
++    const a = await one(`SELECT * FROM activity WHERE id = $1`, [b.activity]);
++    if (!a) throw new HttpError(404, "No such stage");
++    const p = await project(a.project_id, req.user);
++    gate(req.user, "schedule.write", { project: p });
++    assertLocalOrigin(p, "project");
++
++    let id = null;
++    try {
++      await audited(req.user,
++        () => ({ action: "Work item linked", entity: "work_link", entityId: id,
++                 detail: `${b.system} ${b.externalKey ?? b.externalId} → ${a.name}` }),
++        async (t) => {
++          id = await allocateId(t, "WL", { pad: 3 });
++          return t.query(
++            `INSERT INTO work_link
++               (id, activity_id, system, external_id, external_key, title, url, created_by)
++             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
++            [id, a.id, String(b.system).trim(), String(b.externalId).trim(),
++             b.externalKey ?? "", b.title ?? "", assertStorableUri(b.url ?? ""),
++             req.user.id]);
++        });
++    } catch (e) {
++      /* Un élément ne se rattache qu'à une étape : deux étapes qui se
++         partagent un ticket, ce sont deux avancements qui se contredisent. */
++      if (String(e.message ?? "").includes("work_link_system_external_id_key")
++          || e.code === "23505") {
++        bad("That item is already linked to a stage — unlink it there first");
++      }
++      throw e;
++    }
++    res.status(201).json({ id });
++  } catch (e) { next(e); }
++});
++
++r.delete("/worklinks/:id", async (req, res, next) => {
++  try {
++    const link = await one(`SELECT * FROM work_link WHERE id = $1`, [req.params.id]);
++    if (!link) throw new HttpError(404, "No such link");
++    const a = await one(`SELECT * FROM activity WHERE id = $1`, [link.activity_id]);
++    const p = await project(a.project_id, req.user);
++    gate(req.user, "schedule.write", { project: p });
++
++    await audited(req.user,
++      { action: "Work item unlinked", entity: "work_link", entityId: link.id,
++        detail: `${link.system} ${link.external_key || link.external_id}`,
++        before: { ...link } },
++      async (t) => t.query(`DELETE FROM work_link WHERE id = $1`, [link.id]));
++    res.json({ ok: true });
++  } catch (e) { next(e); }
++});
++
+ r.post("/workitems", async (req, res, next) => {
+   try {
+     const b = req.body ?? {};
+diff --git a/server/src/routes/v1.js b/server/src/routes/v1.js
+index 200a9d2..30998fd 100644
+--- a/server/src/routes/v1.js
++++ b/server/src/routes/v1.js
+@@ -23,9 +23,11 @@
+ 
+ import { Router } from "express";
+ import { loadPortfolio } from "../portfolio.js";
+-import { readAudit } from "../audit.js";
++import { audited, readAudit } from "../audit.js";
++import { one, query, updateVersioned } from "../db.js";
++import { HttpError } from "../auth.js";
+ import { requireIntegration } from "../integrations.js";
+-import { openApiDocument } from "../openapi.js";
++import { openApiDocument, scopedEndpoints } from "../openapi.js";
+ 
+ const r = Router();
+ 
+@@ -86,6 +88,111 @@ r.get("/audit", requireIntegration("read:audit"), async (req, res, next) => {
+  * Réservé à une clé valable, comme la découverte : la forme d'une API est
+  * de la reconnaissance, et le comité a posé « fermé par défaut ».
+  */
++/**
++ * INT-10 — le pont vers là où le travail se fait.
++ *
++ * Un suivi de tâches poste l'état des éléments qu'une PERSONNE a déjà
++ * rattachés à une étape ; l'avancement de l'étape devient le rapport des
++ * éléments fermés sur les éléments liés.
++ *
++ * Trois refus délibérés, et chacun coûte quelque chose de précis :
++ *
++ *  · **Pas de pourcentage.** Une intégration qui pourrait écrire « 90 % »
++ *    rendrait le chiffre invérifiable ; « 9 éléments sur 10 » se relit et
++ *    se rattache à des objets qu'un auditeur peut aller voir.
++ *  · **Pas de rattachement.** Créer un lien est un acte de session, sous
++ *    `schedule.write` du projet. Une clé volée ne doit pas pouvoir
++ *    accrocher du travail inventé à n'importe quelle étape.
++ *  · **Pas de silence.** Un élément inconnu revient dans `unlinked` : un
++ *    intégrateur doit pouvoir voir ce qui reste à cartographier, et non
++ *    croire que tout est passé.
++ */
++r.post("/progress", requireIntegration("write:progress"), async (req, res, next) => {
++  try {
++    const b = req.body ?? {};
++    const system = String(b.system ?? "").trim();
++    if (!system) throw new HttpError(400, "A report names the system it comes from");
++    const items = Array.isArray(b.items) ? b.items : null;
++    if (!items) throw new HttpError(400, "A report carries an `items` array");
++    if (items.length > 1000) {
++      throw new HttpError(400, "At most 1000 items per report — page it");
++    }
++
++    const unlinked = [];
++    const touched = new Map();          // activity_id → { before, after }
++    let unchanged = 0;
++
++    for (const item of items) {
++      const externalId = String(item?.externalId ?? "").trim();
++      if (!externalId) continue;
++      const state = item?.state === "closed" ? "closed" : "open";
++
++      const link = await one(
++        `SELECT * FROM work_link WHERE system = $1 AND external_id = $2`,
++        [system, externalId]);
++      if (!link) { unlinked.push(externalId); continue; }
++
++      if (link.state === state
++          && link.external_key === (item.key ?? link.external_key)
++          && link.title === (item.title ?? link.title)) {
++        unchanged++;
++        touched.set(link.activity_id, true);
++        continue;
++      }
++
++      await query(
++        `UPDATE work_link
++            SET state = $2, closed_on = $3, external_key = $4, title = $5, url = $6,
++                reported_by = $7, reported_at = now(), row_version = row_version + 1
++          WHERE id = $1`,
++        [link.id, state, state === "closed" ? new Date() : null,
++         item.key ?? link.external_key, item.title ?? link.title,
++         item.url ?? link.url, req.integration.id]);
++      touched.set(link.activity_id, true);
++    }
++
++    /* Un seul mouvement d'avancement par étape touchée, audité avec le NOM
++       de l'intégration : « système » n'est pas une réponse à « qui a écrit
++       cette ligne » (025). */
++    const updated = [];
++    const contended = [];
++    for (const activityId of touched.keys()) {
++      const counts = await one(
++        `SELECT count(*)::int AS total,
++                count(*) FILTER (WHERE state = 'closed')::int AS closed
++           FROM work_link WHERE activity_id = $1`, [activityId]);
++      if (!counts || !counts.total) continue;
++
++      const pct = Math.round((counts.closed / counts.total) * 100);
++      const activity = await one(`SELECT * FROM activity WHERE id = $1`, [activityId]);
++      if (!activity || activity.pct === pct) continue;
++
++      const out = await audited(req.user,
++        { action: "Progress reported", entity: "activity", entityId: activityId,
++          detail: `${activity.name} — ${counts.closed}/${counts.total} item(s) closed `
++                + `(${activity.pct}% → ${pct}%), reported by ${system}` },
++        async (t) => updateVersioned(
++          t, "activity", activityId, activity.row_version, { pct }));
++
++      /* Une personne a modifié l'étape entre la lecture et l'écriture. Pour
++         un humain c'est un 409 « rechargez » ; pour une machine qui poste
++         un lot, refuser tout le lot à cause d'une ligne serait absurde —
++         l'étape est signalée `contended` et le rapport suivant la reprendra
++         avec la version à jour. Ce qui ne doit jamais arriver, et n'arrive
++         pas, c'est l'écrasement silencieux. */
++      if (!out.ok) { contended.push(activityId); continue; }
++
++      updated.push({
++        activity: activityId, name: activity.name,
++        was: activity.pct, now: pct,
++        closed: counts.closed, of: counts.total,
++      });
++    }
++
++    res.json({ ...stamp(), updated, unlinked, unchanged, contended });
++  } catch (e) { next(e); }
++});
++
+ r.get("/openapi.json", requireIntegration(), (req, res) => {
+   res.json(openApiDocument({
+     version: process.env.MERIDIAN_VERSION || "dev",
+@@ -104,10 +211,10 @@ r.get("/", requireIntegration(), (req, res) => {
+     integration: req.user.displayName,
+     scopesHeld: req.user.scopes,
+     describedBy: "/api/v1/openapi.json",
+-    endpoints: [
+-      { path: "/api/v1/portfolio", scope: "read:portfolio" },
+-      { path: "/api/v1/audit", scope: "read:audit" },
+-    ],
++    /* Dérivé de la description, pas recopié : une liste tenue à la main à
++       côté d'une autre finit toujours par mentir, et celle-ci a annoncé
++       deux portes le jour où il y en avait trois. */
++    endpoints: scopedEndpoints(),
+   });
+ });
+ 
+diff --git a/server/test/persistence.test.js b/server/test/persistence.test.js
+index 8c2156c..6518de2 100644
+--- a/server/test/persistence.test.js
++++ b/server/test/persistence.test.js
+@@ -32,7 +32,7 @@ describe("schema and migrations (R2.2, R2.7)", () => {
+        "016_timesheet.sql", "017_absence_minimisation.sql",
+        "018_notification_centre.sql", "019_notification_subscription.sql",
+        "020_evidence_probe.sql", "021_usage_counters.sql",
+-       "022_site_champion.sql", "023_session_digest.sql", "024_lessons.sql", "025_integrations.sql", "026_tolerance.sql", "027_international.sql", "028_business_case.sql", "029_reporting_views.sql", "030_residual_risk.sql", "031_outbound_events.sql", "032_closure_quality.sql", "033_change_raiser_account.sql"]);
++       "022_site_champion.sql", "023_session_digest.sql", "024_lessons.sql", "025_integrations.sql", "026_tolerance.sql", "027_international.sql", "028_business_case.sql", "029_reporting_views.sql", "030_residual_risk.sql", "031_outbound_events.sql", "032_closure_quality.sql", "033_change_raiser_account.sql", "034_work_links.sql"]);
+     const again = await migrate({ silent: true });
+     assert.deepEqual(again, [], "a second run applies nothing");
+   });
+diff --git a/server/test/worklink.test.js b/server/test/worklink.test.js
+new file mode 100644
+index 0000000..9bff05d
+--- /dev/null
++++ b/server/test/worklink.test.js
+@@ -0,0 +1,370 @@
++/**
++ * INT-10 · Le pont vers là où le travail se fait.
++ *
++ * Le constat qui décide d'une adoption : l'équipe livre dans Jira ou Azure
++ * DevOps, et l'avancement était saisi deux fois. Un avancement re-saisi est
++ * un avancement périmé — c'est ainsi qu'un outil de PMO cesse d'être tenu à
++ * jour, puis cesse d'être cru.
++ *
++ * Ces tests tiennent les cinq propriétés qui rendent le pont sûr, et chacune
++ * est un refus :
++ *
++ *   · une clé ne RATTACHE pas — rattacher est un acte de session, sous
++ *     l'autorité du projet ;
++ *   · une clé n'écrit pas un POURCENTAGE — elle rapporte des états, et
++ *     l'avancement se déduit ;
++ *   · une clé de lecture ne rapporte rien ;
++ *   · un élément inconnu revient dans `unlinked`, jamais en silence ;
++ *   · une étape qu'une personne a modifiée entre-temps n'est pas écrasée.
++ */
++
++import { test, before, after, describe } from "node:test";
++import assert from "node:assert/strict";
++import { boot, shutdown, as, client } from "./harness.js";
++import { one, many } from "../src/db.js";
++import { SCOPES } from "../src/integrations.js";
++
++before(async () => { await boot(); });
++after(shutdown);
++
++async function mint(admin, name, scopes) {
++  const r = await admin.post("/api/admin/integrations", { name, scopes, purpose: "test" });
++  assert.equal(r.status, 201, r.text);
++  return r.body;
++}
++
++/** Un appel machine : pas de cookie, une clé dans l'en-tête. */
++function machine(key) {
++  const c = client();
++  return {
++    post: (path, body) => c.post(path, body, { "X-API-Key": key }),
++    get: (path) => c.get(path, { "X-API-Key": key }),
++  };
++}
++
++/* Une étape par test, jamais la même deux fois : des liens laissés par un
++   test précédent changeraient l'arithmétique du suivant, et l'échec se
++   lirait comme un défaut du produit. */
++let taken = 0;
++async function freshStage() {
++  const rows = await many(
++    `SELECT a.* FROM activity a JOIN project p ON p.id = a.project_id
++      WHERE p.origin = 'local' AND a.id NOT IN (SELECT activity_id FROM work_link)
++      ORDER BY a.id`);
++  const a = rows[taken++ % rows.length];
++  assert.ok(a, "le jeu de démonstration porte assez d'étapes");
++  return a;
++}
++
++/* Une étape remise à zéro d'abord. Une étape du jeu de démonstration qui se
++   trouve DÉJÀ au pourcentage que le rapport calculerait ne bouge pas — et
++   c'est le comportement voulu, pas un défaut : un rapport qui ne change rien
++   n'écrit rien et n'audite rien. Un test de la trace doit donc partir d'une
++   valeur connue, sinon il mesure le hasard du jeu de données. */
++async function zeroedStage(admin) {
++  const a = await freshStage();
++  const r = await admin.patch(`/api/activities/${a.id}`, { pct: 0, version: a.row_version });
++  assert.equal(r.status, 200, r.text);
++  return { ...a, pct: 0, row_version: r.body.version };
++}
++
++describe("INT-10 · l'autorité de rattacher", () => {
++  test("la portée d'écriture existe, et elle ne dit pas « pourcentage »", () => {
++    assert.ok(SCOPES["write:progress"], "la portée est déclarée");
++    assert.match(SCOPES["write:progress"], /never a percentage/i);
++  });
++
++  test("une personne rattache un élément à une étape, et cela s'audite", async () => {
++    const admin = await as("admin");
++    const stage = await freshStage();
++
++    const made = await admin.post("/api/worklinks", {
++      activity: stage.id, system: "jira", externalId: "10001",
++      externalKey: "OPS-1423", title: "Close the ingest gap",
++    });
++    assert.equal(made.status, 201, made.text);
++
++    const row = await one(`SELECT * FROM work_link WHERE id = $1`, [made.body.id]);
++    assert.equal(row.activity_id, stage.id);
++    assert.equal(row.state, "open", "un élément rattaché est ouvert jusqu'à preuve du contraire");
++
++    const audit = await admin.get("/api/audit?entity=work_link");
++    const event = audit.body.events.find((e) => e.entity_id === made.body.id);
++    assert.ok(event, "le rattachement laisse une trace");
++    assert.match(event.action, /linked/i);
++  });
++
++  test("un élément ne se rattache qu'à une étape", async () => {
++    // Deux étapes qui se partagent un ticket, ce sont deux avancements qui
++    // se contredisent.
++    const admin = await as("admin");
++    const stage = await freshStage();
++    const first = await admin.post("/api/worklinks", {
++      activity: stage.id, system: "jira", externalId: "dup-1", externalKey: "OPS-1",
++    });
++    assert.equal(first.status, 201);
++    const again = await admin.post("/api/worklinks", {
++      activity: stage.id, system: "jira", externalId: "dup-1", externalKey: "OPS-1",
++    });
++    assert.equal(again.status, 400);
++    assert.match(again.body.error, /already linked/i);
++  });
++
++  test("un lecteur ne rattache rien, même sur un projet qu'il voit", async () => {
++    /* Sur un projet qu'il ne voit PAS, la réponse est 404 — le produit ne
++       confirme pas l'existence de ce qu'on n'a pas le droit de lire. Le
++       refus intéressant est donc celui-ci : il voit le projet, et il ne
++       peut toujours pas y accrocher du travail. */
++    const viewer = await as("viewerGRU");
++    const stage = await one(
++      `SELECT a.* FROM activity a JOIN project p ON p.id = a.project_id
++        WHERE p.origin = 'local' AND p.site_id = 'GRU' ORDER BY a.id LIMIT 1`);
++    assert.ok(stage, "le lecteur de São Paulo voit au moins un projet");
++
++    const r = await viewer.post("/api/worklinks", {
++      activity: stage.id, system: "jira", externalId: "nope-1",
++    });
++    assert.equal(r.status, 403, r.text);
++    assert.equal(await one(`SELECT * FROM work_link WHERE external_id = 'nope-1'`), null);
++  });
++});
++
++describe("INT-10 · ce que la clé peut, et ce qu'elle ne peut pas", () => {
++  test("elle ne rattache pas : /api n'est pas ouvert à une clé", async () => {
++    // C'est la propriété qui fait qu'une clé volée ne peut pas accrocher du
++    // travail inventé à n'importe quelle étape d'un portefeuille.
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (rattachement)", "write:progress");
++    const stage = await freshStage();
++
++    const r = await machine(key.key).post("/api/worklinks", {
++      activity: stage.id, system: "jira", externalId: "forbidden-1",
++    });
++    assert.equal(r.status, 401, "l'interface interactive refuse une clé");
++  });
++
++  test("une clé de lecture ne rapporte pas d'avancement", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Entrepôt (lecture seule)", "read:portfolio");
++    const r = await machine(key.key).post("/api/v1/progress", {
++      system: "jira", items: [{ externalId: "10001", state: "closed" }],
++    });
++    assert.equal(r.status, 403);
++    assert.match(r.body.error, /write:progress/);
++  });
++
++  test("aucune clé du tout est refusée", async () => {
++    const c = client();
++    const r = await c.post("/api/v1/progress", { system: "jira", items: [] });
++    assert.equal(r.status, 401);
++  });
++});
++
++describe("INT-10 · l'avancement se déduit", () => {
++  test("le pourcentage est le rapport des fermés sur les liés, jamais une valeur reçue", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync", "write:progress");
++    const stage = await freshStage();
++
++    // Quatre éléments rattachés par une personne.
++    for (const n of [1, 2, 3, 4]) {
++      const r = await admin.post("/api/worklinks", {
++        activity: stage.id, system: "ado", externalId: `calc-${n}`, externalKey: `AB#${n}`,
++      });
++      assert.equal(r.status, 201, r.text);
++    }
++
++    // Le suivi de tâches en ferme trois.
++    const report = await machine(key.key).post("/api/v1/progress", {
++      system: "ado",
++      items: [
++        { externalId: "calc-1", state: "closed" },
++        { externalId: "calc-2", state: "closed" },
++        { externalId: "calc-3", state: "closed" },
++        { externalId: "calc-4", state: "open" },
++      ],
++    });
++    assert.equal(report.status, 200, report.text);
++
++    const moved = report.body.updated.find((u) => u.activity === stage.id);
++    assert.ok(moved, "l'étape a bougé");
++    assert.equal(moved.now, 75, "trois sur quatre");
++    assert.equal(moved.closed, 3);
++    assert.equal(moved.of, 4);
++
++    const after = await one(`SELECT pct FROM activity WHERE id = $1`, [stage.id]);
++    assert.equal(after.pct, 75, "et la valeur est bien celle qui est écrite");
++  });
++
++  test("un pourcentage envoyé par l'intégration est ignoré", async () => {
++    // Une valeur reçue serait invérifiable ; « 3 sur 4 » se relit et se
++    // rattache à des objets qu'un auditeur peut aller voir.
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (menteur)", "write:progress");
++    const stage = await freshStage();
++    await admin.post("/api/worklinks", {
++      activity: stage.id, system: "gh", externalId: "liar-1", externalKey: "#1",
++    });
++
++    await machine(key.key).post("/api/v1/progress", {
++      system: "gh", pct: 100, percent: 100,
++      items: [{ externalId: "liar-1", state: "open", pct: 100 }],
++    });
++    const after = await one(`SELECT pct FROM activity WHERE id = $1`, [stage.id]);
++    assert.equal(after.pct, 0, "aucun élément fermé, donc zéro, quoi qu'on ait envoyé");
++  });
++
++  test("un élément inconnu revient dans unlinked, jamais en silence", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (inconnu)", "write:progress");
++    const r = await machine(key.key).post("/api/v1/progress", {
++      system: "jira",
++      items: [{ externalId: "never-seen-1", state: "closed" },
++              { externalId: "never-seen-2", state: "open" }],
++    });
++    assert.equal(r.status, 200);
++    assert.deepEqual(r.body.unlinked.sort(), ["never-seen-1", "never-seen-2"]);
++    assert.equal(r.body.updated.length, 0);
++  });
++
++  test("un rapport identique au précédent ne bouge rien et ne s'audite pas", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (répétition)", "write:progress");
++    const stage = await freshStage();
++    await admin.post("/api/worklinks", {
++      activity: stage.id, system: "rep", externalId: "same-1", externalKey: "R-1",
++    });
++    const body = { system: "rep", items: [{ externalId: "same-1", state: "closed" }] };
++
++    await machine(key.key).post("/api/v1/progress", body);
++    const before = (await admin.get("/api/audit?action=Progress reported")).body.events.length;
++
++    const second = await machine(key.key).post("/api/v1/progress", body);
++    assert.equal(second.body.updated.length, 0, "rien à changer");
++    assert.equal(second.body.unchanged, 1);
++
++    const after = (await admin.get("/api/audit?action=Progress reported")).body.events.length;
++    assert.equal(after, before, "et rien de plus dans la piste");
++  });
++
++  test("rouvrir un élément fait redescendre l'avancement", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (réouverture)", "write:progress");
++    const stage = await freshStage();
++    for (const n of [1, 2]) {
++      await admin.post("/api/worklinks", {
++        activity: stage.id, system: "ro", externalId: `ro-${n}`, externalKey: `RO-${n}`,
++      });
++    }
++    await machine(key.key).post("/api/v1/progress", {
++      system: "ro",
++      items: [{ externalId: "ro-1", state: "closed" }, { externalId: "ro-2", state: "closed" }],
++    });
++    assert.equal((await one(`SELECT pct FROM activity WHERE id = $1`, [stage.id])).pct, 100);
++
++    const back = await machine(key.key).post("/api/v1/progress", {
++      system: "ro", items: [{ externalId: "ro-1", state: "open" }],
++    });
++    assert.equal(back.body.updated[0].now, 50, "un ticket rouvert est du travail à refaire");
++  });
++});
++
++describe("INT-10 · la trace", () => {
++  test("l'avancement rapporté nomme l'intégration, jamais « système »", async () => {
++    // 025 : « un NOM dans la piste d'audit. "système" n'est pas une réponse
++    // à "qui a écrit cette ligne" ».
++    const admin = await as("admin");
++    const key = await mint(admin, "Azure DevOps — plateforme", "write:progress");
++    const stage = await zeroedStage(admin);
++    await admin.post("/api/worklinks", {
++      activity: stage.id, system: "named", externalId: "n-1", externalKey: "N-1",
++    });
++    await machine(key.key).post("/api/v1/progress", {
++      system: "named", items: [{ externalId: "n-1", state: "closed" }],
++    });
++
++    const audit = await admin.get("/api/audit?action=Progress reported");
++    const event = audit.body.events.find((e) => e.entity_id === stage.id);
++    assert.ok(event, "le mouvement est tracé");
++    assert.match(event.user_label, /Azure DevOps — plateforme/);
++    assert.match(event.detail, /1\/1 item\(s\) closed/);
++  });
++
++  test("et il porte l'image d'avant, comme toute mise à jour", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (image)", "write:progress");
++    const stage = await zeroedStage(admin);
++    await admin.post("/api/worklinks", {
++      activity: stage.id, system: "img", externalId: "i-1", externalKey: "I-1",
++    });
++    const was = (await one(`SELECT pct FROM activity WHERE id = $1`, [stage.id])).pct;
++
++    await machine(key.key).post("/api/v1/progress", {
++      system: "img", items: [{ externalId: "i-1", state: "closed" }],
++    });
++    const audit = await admin.get("/api/audit?action=Progress reported");
++    const event = audit.body.events.find((e) => e.entity_id === stage.id);
++    assert.ok(event.before_json, "l'image d'avant est là");
++    assert.equal(event.before_json.pct, was, "et c'est bien la valeur d'avant");
++  });
++
++  test("délier retire le lien et garde la trace de ce qu'il disait", async () => {
++    const admin = await as("admin");
++    const stage = await freshStage();
++    const made = await admin.post("/api/worklinks", {
++      activity: stage.id, system: "del", externalId: "d-1", externalKey: "D-1",
++      title: "Something worth remembering",
++    });
++    const gone = await admin.del(`/api/worklinks/${made.body.id}`);
++    assert.equal(gone.status, 200);
++    assert.equal(await one(`SELECT * FROM work_link WHERE id = $1`, [made.body.id]), null);
++
++    const audit = await admin.get("/api/audit?entity=work_link");
++    const event = audit.body.events.find(
++      (e) => e.entity_id === made.body.id && /unlinked/i.test(e.action));
++    assert.ok(event, "le retrait est tracé");
++    assert.equal(event.before_json.title, "Something worth remembering");
++  });
++});
++
++describe("INT-10 · les bornes", () => {
++  test("un rapport sans système est refusé", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (sans nom)", "write:progress");
++    const r = await machine(key.key).post("/api/v1/progress", { items: [] });
++    assert.equal(r.status, 400);
++  });
++
++  test("un rapport sans items est refusé", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (sans items)", "write:progress");
++    const r = await machine(key.key).post("/api/v1/progress", { system: "jira" });
++    assert.equal(r.status, 400);
++  });
++
++  test("un lot démesuré est refusé plutôt que servi", async () => {
++    const admin = await as("admin");
++    const key = await mint(admin, "Jira sync (lot)", "write:progress");
++    const items = Array.from({ length: 1001 }, (_, i) => ({ externalId: `x${i}`, state: "open" }));
++    const r = await machine(key.key).post("/api/v1/progress", { system: "jira", items });
++    assert.equal(r.status, 400);
++    assert.match(r.body.error, /1000/);
++  });
++
++  test("délier une étape ne touche pas les liens des autres", async () => {
++    const admin = await as("admin");
++    const stages = await many(
++      `SELECT a.* FROM activity a JOIN project p ON p.id = a.project_id
++        WHERE p.origin = 'local' ORDER BY a.id LIMIT 2`);
++    const [one_, two] = stages;
++    await admin.post("/api/worklinks", {
++      activity: one_.id, system: "iso", externalId: "iso-1", externalKey: "S-1" });
++    const keep = await admin.post("/api/worklinks", {
++      activity: two.id, system: "iso", externalId: "iso-2", externalKey: "S-2" });
++
++    const links = await many(`SELECT * FROM work_link WHERE system = 'iso'`);
++    assert.equal(links.length, 2);
++    assert.equal(
++      (await one(`SELECT * FROM work_link WHERE id = $1`, [keep.body.id])).activity_id, two.id);
++  });
++});
+-- 
+2.43.0
+

@@ -272,7 +272,7 @@
     <div><dt>Gates cleared</dt><dd>20</dd></div>
     <div><dt>RAID closed</dt><dd>8<span>&thinsp;/&thinsp;9</span></dd></div>
     <div><dt>Audit rows</dt><dd>180</dd></div>
-    <div><dt>Tests shipped</dt><dd>278<span>&thinsp;was 74</span></dd></div>
+    <div><dt>Tests shipped</dt><dd>315<span>&thinsp;was 74</span></dd></div>
   </dl>
 </div>
 
@@ -396,7 +396,7 @@ CREATE RULE audit_no_delete AS ON DELETE TO audit_event DO INSTEAD NOTHING;</pre
       <div class="finding">
         <span class="n">08</span>
         <h3>It holds itself to a standard it can prove</h3>
-        <pre class="evidence">$ npm test        <span class="pass">449 tests, 449 pass, 0 fail</span>
+        <pre class="evidence">$ npm test        <span class="pass">449 tests, 449 pass, 0 fail</span>   <span class="dim">(468 after the work below)</span>
 $ npm run audit   <span class="pass">nine static gates, all pass</span>
                   <span class="dim">· 21 screens × 4 roles = 84 renders, no exceptions
                   · every route matches its published contract
@@ -433,8 +433,12 @@ $ npm run audit   <span class="pass">nine static gates, all pass</span>
 
       <div class="gaps">
         <article>
-          <h3>It is not where the work happens — and there is no bridge to where it does
-            <span class="tag">Biggest objection</span></h3>
+          <h3>It is not where the work happens — and there was no bridge to where it does
+            <span class="tag fixed">Built</span></h3>
+          <p class="sub" style="margin-bottom:.7rem"><em>This was the report's largest
+            objection and it is the one that was built — see §5. It is left here as written
+            because it is why the work was done, and because it still stands for anyone
+            running a version without it.</em></p>
           <p>Meridian says of itself: <em>"It is not a task manager, a time-and-billing system,
             an ITSM tool, or an agile team board."</em> Fair. The consequence is concrete: the
             delivery team's work lives in Jira, Azure DevOps, GitHub or Linear, and Meridian
@@ -510,13 +514,50 @@ $ npm run audit   <span class="pass">nine static gates, all pass</span>
 
 <section>
   <div class="row">
-    <div class="rail">§4 Findings</div>
+    <div class="rail">§4 Contributed</div>
     <div>
-      <h2>Two defects found by using it, both fixed</h2>
-      <p>Patch supplied: <code>docs/meridian/0001-meridian-first-run-and-audit-images.patch</code></p>
+      <h2>What was contributed back</h2>
+      <p>Three changes, in the order this report recommended them. Each was checked
+        against Meridian's own bar — <strong>468 tests and nine static gates, all
+        passing</strong>, up from 449.</p>
 
       <div class="finding">
-        <span class="n">Finding 1</span>
+        <span class="n">Recommendation 1</span>
+        <h3>The bridge to where the work happens
+          <span class="tag fixed">Built</span></h3>
+        <p>The largest gap in this report. Everything recorded here was recorded twice,
+          and re-entered status is stale status.</p>
+        <p>Meridian had already named the resolution — <em>"writes will come with the
+          integrations that ask for them, never before"</em> — and the codebase named this
+          exact backlog item, <strong>INT-10 (Jira, Azure DevOps)</strong>. So this was
+          built with the product's grain rather than against it.</p>
+        <pre class="evidence">POST /api/v1/progress          <span class="dim">X-API-Key: &lt;key with write:progress&gt;</span>
+{"system":"jira","items":[{"externalId":"10001","state":"closed"}]}
+
+<span class="pass">→</span> {"updated":[{"activity":"PRJ-147-A9","was":50,"now":75,"closed":3,"of":4}],
+   "unlinked":["10099"], "unchanged":2, "contended":[]}</pre>
+        <p><strong>No Jira connector. No Azure DevOps connector.</strong> Twenty connectors
+          would be twenty authentication debts and twenty reasons not to upgrade. This is
+          one generic surface that knows the name of no tool.</p>
+        <p>Three refusals make it safe. <strong>A key cannot link</strong> — attaching an
+          item to a stage is a session act under the project's authority, so a stolen key
+          cannot hang invented work anywhere. <strong>A key cannot write a
+          percentage</strong> — it reports item states and the percent becomes
+          closed-over-linked, because "78%" is unverifiable where "7 of 9" can be re-read
+          and traced to objects an auditor can go and look at. <strong>Nothing is
+          silent</strong> — unknown items come back in <code>unlinked</code>, and a stage a
+          person edited between the read and the write comes back in <code>contended</code>
+          rather than being overwritten.</p>
+        <p>Every movement is audited under the integration's <em>name</em> — which is what
+          migration 025 asked for: <em>"'system' is not an answer to 'who wrote this
+          line'."</em> 19 tests, a documented contract, and the OpenAPI regenerated.</p>
+        <p class="sub">One drift was found while building it: the discovery endpoint kept its
+          endpoint list in a hand-written array, so it announced two doors on the day there
+          were three. It derives them from the contract now.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">Recommendation 3</span>
         <h3>Following the README exactly produces an empty instance
           <span class="tag blocker">Blocker</span><span class="tag fixed">Fixed</span></h3>
         <p>The README says: <em>"With no <code>DATABASE_URL</code> the server runs PGlite from
@@ -539,9 +580,9 @@ $ curl localhost:4173/api/auth/accounts
       </div>
 
       <div class="finding">
-        <span class="n">Finding 2</span>
-        <h3>Closing a register item recorded no before-image
-          <span class="tag fixed">Fixed</span></h3>
+        <span class="n">Recommendation 2</span>
+        <h3>Before-images on every update route
+          <span class="tag fixed">Done</span></h3>
         <p>The audit table carries before and after images and the writer supports them — but
           among the call sites they are passed on <strong>deletions</strong> and a few
           exceptional acts, not on ordinary updates. Across the 180 audit rows this campaign
@@ -554,8 +595,10 @@ $ curl localhost:4173/api/auth/accounts
 "before_json": {"status":<span class="fail">"Open"</span>,"probability":2,"impact":5,
                 "response":"Monitor","title":"…","detail":"…"}
 "after_json":  {"status":<span class="pass">"Closed"</span>}</pre>
-        <p>Both fixes were checked against Meridian's own bar: <strong>449 tests, nine gates
-          and the build all still pass.</strong></p>
+        <p>All three were checked against Meridian's own bar: <strong>468 tests, the nine
+          static gates and the build all pass.</strong> Two of the project's own tests pin
+          the exact scope list and migration set and needed updating — which is the point of
+          having them: an addition has to be deliberate.</p>
       </div>
     </div>
   </div>
@@ -581,13 +624,15 @@ $ curl localhost:4173/api/auth/accounts
           that are now the reason the release can be explained to somebody who was not there.</p>
       </div>
 
-      <h3>What would make it adoptable far more widely</h3>
+      <h3>What would make it adoptable far more widely — and what was done about it</h3>
       <ol class="roadmap">
-        <li><strong>A Jira / GitHub / Azure DevOps bridge.</strong> One connector that closes a
-          stage when its work item closes. The difference between a PMO tool people maintain and
-          one they abandon — and the only item here that changes the product's category.</li>
-        <li><strong>Before-images on every update route</strong>, not only deletions. Finish
-          what the supplied patch starts.</li>
+        <li><s>A Jira / GitHub / Azure DevOps bridge.</s> <strong>Built</strong> — one
+          generic surface that closes a stage when its work items close. This was the only
+          item here that changes the product's category, and it is why the report's largest
+          objection no longer stands as written.</li>
+        <li><s>Before-images on every update route.</s> <strong>Done</strong> — captured in
+          the statement that performs the update, so it applies to routes nobody
+          annotated.</li>
         <li><strong>Slack and Teams delivery</strong> for the weekly digest and gate approvals.</li>
         <li><strong>English translations of the decision record.</strong> The reasoning is the
           best thing about this project.</li>

@@ -23,8 +23,8 @@ with — was planned, governed, gated and closed out in Meridian.
 | Audit rows written | 180 |
 
 Every project was driven from `Initiation` through four gates to
-`Transition`. The engineering it governed shipped: **278 tests passing, up
-from 74.**
+`Transition`. The engineering it governed shipped as **Watcher 1.1.0: 315
+tests passing, up from 74.**
 
 The whole programme was run **through the REST API**, headlessly, without
 opening the UI once. That is itself a finding — see benefit 7.
@@ -139,8 +139,8 @@ decorative.
 
 ### 8. It holds itself to a standard it can prove
 
-`npm test` → **449 tests, all passing.** `npm run audit` → **nine static
-gates, all passing**, including *every screen renders for every role* (84
+`npm test` → **449 tests, all passing** (468 after this evaluation's
+contributions). `npm run audit` → **nine static gates, all passing**, including *every screen renders for every role* (84
 render checks), *every route matches its published OpenAPI contract*, and
 *every mutation has an audit row*.
 
@@ -167,7 +167,13 @@ request, and NOTICE shows you how to verify that.
 
 Stated as a buyer would state them.
 
-### It is not where the work happens — and there is no bridge to where it does
+### It is not where the work happens — and there was no bridge to where it does
+
+> **Since addressed.** This was the report's largest objection and it is the
+> one that was built; see *What was contributed back* below. It is left here
+> as written because it is why the work was done, and because the objection
+> stands for anyone running a version without it.
+
 
 Meridian says this about itself: *"It is not a task manager, a
 time-and-billing system, an ITSM tool, or an agile team board."* Fair. But
@@ -238,11 +244,65 @@ further for organisations that need skills-based supply and demand matching.
 
 ---
 
-## Two defects found by using it, both fixed
+## What was contributed back
 
-Patch: `docs/meridian/0001-meridian-first-run-and-audit-images.patch`
+Three changes, in the order they were recommended in the verdict below.
+Each was checked against Meridian's own bar — **468 tests and nine static
+gates, all passing** (the suite was 449 before).
 
-### 1. Following the README exactly produces an empty instance — **blocker**
+Patch: `docs/meridian/meridian-improvements.patch` (both commits).
+
+### Recommendation 1 · The bridge to where the work happens — **built**
+
+The largest gap in this report, and the one most likely to kill an adoption:
+everything recorded here was recorded twice, and re-entered status is stale
+status.
+
+`v1.js` already named the resolution — *"writes will come with the
+integrations that ask for them, never before"* — and the codebase named this
+exact backlog item, **INT-10 (Jira, Azure DevOps)**. So this is that
+integration, built with the product's grain rather than against it:
+
+```http
+POST /api/v1/progress          X-API-Key: <key with write:progress>
+{"system":"jira","items":[{"externalId":"10001","state":"closed"}]}
+→ {"updated":[{"activity":"PRJ-147-A9","was":50,"now":75,"closed":3,"of":4}],
+   "unlinked":["10099"], "unchanged":2, "contended":[]}
+```
+
+**No Jira connector. No Azure DevOps connector.** The interoperability
+committee's "four surfaces instead of twenty connectors" was right, and
+twenty connectors would be twenty authentication debts and twenty reasons
+not to upgrade. This is one generic surface any tracker can call.
+
+Three refusals make it safe, and each cost something specific to get right:
+
+- **A key cannot link.** Attaching an item to a stage is a session act under
+  the project's `schedule.write`. A stolen key cannot hang invented work on
+  any stage in a portfolio. A key posting to `/api/worklinks` gets 401.
+- **A key cannot write a percentage.** It reports item states; the stage's
+  percent becomes closed-over-linked. A system that could write "78%" makes
+  the number unverifiable, whereas "7 of 9" can be re-read, disputed and
+  traced to objects an auditor can go and look at. A `pct` in the request
+  body is ignored, and a test proves it.
+- **Nothing is silent.** Unknown items come back in `unlinked` so an
+  integrator sees what still needs mapping. A stage a person edited between
+  the read and the write comes back in `contended` and is picked up next
+  time — refusing a whole batch over one row would be absurd, and
+  overwriting it silently is what `row_version` exists to prevent.
+
+Every movement is audited under the **integration's name**, which is what
+migration 025 asked for: *"'system' is not an answer to 'who wrote this
+line'."*
+
+19 tests, `docs/33-pont-suivi-de-taches.md`, and the OpenAPI contract
+regenerated. One drift was found while building it: the discovery endpoint
+listed its endpoints from a hand-kept array, so it announced two doors on the
+day there were three. It now derives them from the contract.
+
+### Recommendation 2 · Before-images on every update route — **done**
+
+### The first-run blocker, in detail
 
 README: *"With no `DATABASE_URL` the server runs PGlite from
 `server/.data/pgdata`."* It did not. `.env.example` sets `PGLITE_DIR`, but
@@ -272,21 +332,27 @@ nested data directory fails with ENOENT before it opens.
 *Verified:* a clean clone now reaches a signed-in session with the README's
 three commands and no environment variables.
 
-### 2. Closing a register item recorded no before-image
-
 `audit_event` carries `before_json`/`after_json` and `record()` writes them —
-but among the call sites they are passed on **deletions** and a few
-exceptional acts, not on ordinary updates. Across the 180 audit rows my
+but among the call sites they were passed on **deletions** and a few
+exceptional acts, not on ordinary updates. Across the 180 audit rows the
 campaign wrote, **none carried a before-image, including eight `Item closed`
 rows.**
 
 That is the wrong way round for a register: items are closed constantly and
 deleted almost never, and *"who closed this risk, and what did it say
-before?"* is the first question asked at review. The trail could say a risk
-was closed and by whom, but not what it had been.
+before?"* is the first question asked at review.
 
-**Fixed** for `PATCH /api/raid/:id`. The same gap remains on other update
-routes and deserves the same treatment.
+The first patch fixed the RAID route by hand. This finishes it properly, in
+two places rather than forty: `updateVersioned()` now captures the row in the
+**same statement that changes it** — a `FROM` subquery evaluated against the
+snapshot at statement start, so the image cannot disagree with what was
+actually updated and costs no extra round trip — and `audited()` fills it in
+when the call site did not name its own.
+
+Every update route records a before-image now, including the ones nobody
+thought to annotate. It rides back on a `Symbol`, so the two routes that
+return that object straight to the client did not start serialising whole
+rows.
 
 *Verified:*
 
@@ -296,8 +362,17 @@ routes and deserves the same treatment.
 "after_json":  {"status":"Closed"}
 ```
 
-Both fixes were checked against Meridian's own bar: **449 tests, nine gates
-and the build all still pass.**
+### Recommendation 3 · The first-run blocker — **fixed**
+
+Described above; it remains the single most important change, because it is
+the first thing every new user meets.
+
+---
+
+All three were checked against Meridian's own bar: **468 tests, the nine
+static gates and the build all pass.** Two of the project's own tests pin the
+exact scope list and migration set and needed updating — which is the point
+of having them: an addition has to be deliberate.
 
 ---
 
@@ -325,12 +400,13 @@ explained to somebody who was not there.
 **What would make it adoptable far more widely**, in the order I would build
 them:
 
-1. **A Jira / GitHub / Azure DevOps bridge.** One connector that closes a
-   stage when its work item closes. This is the difference between a PMO tool
-   people maintain and one they abandon. It is also the only item on this
-   list that changes the product's category.
-2. **Before-images on every update route**, not only deletions — finish what
-   the patch above starts.
+1. ~~**A Jira / GitHub / Azure DevOps bridge.**~~ **Built** — one generic
+   surface that closes a stage when its work items close. This was the only
+   item on this list that changes the product's category, and it is the
+   reason the report's largest objection no longer stands as written.
+2. ~~**Before-images on every update route**~~ **Done** — captured in the
+   statement that performs the update, so it applies to routes nobody
+   annotated.
 3. **Slack / Teams delivery for the weekly digest and gate approvals.**
 4. **English translations of the `docs/` decision record.** The reasoning is
    the best thing about this project and most of it is currently unreadable
