@@ -95,6 +95,8 @@ export async function startReceivers({ pg, tsdb, redis, log }) {
       sweeper.stop();
       await sub.quit().catch(() => {});
       for (const r of started) await r.stop?.();
+      // Last, so anything still in flight is queued before the flusher drains.
+      await pipeline.stop();
     },
   };
 }

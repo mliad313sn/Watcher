@@ -156,28 +156,7 @@ export class TrapReceiver {
   }
 
   async #onTrap(data) {
-    const address = String(data.rinfo?.address ?? '').replace(/^::ffff:/, '');
-    const { oid, varbinds, message } = decodeTrap(data.pdu);
-
-    await this.pipeline.handle({
-      source: EVENT_SOURCE.TRAP,
-      sourceIp: address,
-      timestamp: new Date(),
-      oid,
-      facility: null,
-      severity: null,
-      facilityName: '',
-      severityName: '',
-      appName: '',
-      message,
-      detail: {
-        varbinds,
-        version: data.pdu.type === snmp.PduType.Trap ? 'v1' : 'v2c/v3',
-        inform: data.pdu.type === snmp.PduType.InformRequest,
-        community: data.pdu.community,
-        user: data.pdu.user,
-      },
-    });
+    await this.pipeline.handle(trapToEvent(data));
   }
 
   stop() {
@@ -186,4 +165,45 @@ export class TrapReceiver {
   }
 
   stats() { return { rejected: this.rejected }; }
+}
+
+/**
+ * A received PDU as the normalised event the pipeline takes.
+ *
+ * Separate from the receiver so the decision about what is recorded — which
+ * is where the credential leak lived — is testable without a socket.
+ */
+export function trapToEvent(data) {
+  const address = String(data.rinfo?.address ?? '').replace(/^::ffff:/, '');
+  const { oid, varbinds, message } = decodeTrap(data.pdu);
+
+  return {
+    source: EVENT_SOURCE.TRAP,
+    sourceIp: address,
+    timestamp: new Date(),
+    oid,
+    facility: null,
+    severity: null,
+    facilityName: '',
+    severityName: '',
+    appName: '',
+    message,
+    detail: {
+      varbinds,
+      version: data.pdu.type === snmp.PduType.Trap ? 'v1' : 'v2c/v3',
+      inform: data.pdu.type === snmp.PduType.InformRequest,
+      /* The community string is NOT recorded, and that is the point. A
+         v1/v2c community is the shared secret that authenticates the trap,
+         and the event store is readable by any viewer through
+         GET /api/events — writing it here would publish the credential for
+         every device in the estate to the least privileged role in the
+         product, and from there to the devices themselves.
+
+         A v3 user NAME is not a secret (its auth and privacy keys are, and
+         they never reach this code), so it is kept: "which identity sent
+         this" is a real operational question. */
+      auth: data.pdu.community ? 'community' : (data.pdu.user ? 'usm' : 'none'),
+      user: data.pdu.user ?? '',
+    },
+  };
 }

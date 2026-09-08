@@ -22,6 +22,10 @@ import {
 /** How long a cached identity or rule set is trusted before re-reading. */
 const RULES_TTL_MS = 30_000;
 const SOURCE_TTL_MS = 60_000;
+/** How often pending auto-clear deadlines are attached, off the receive path. */
+const AUTO_CLEAR_FLUSH_MS = 2_000;
+/** How many flushes a deadline waits for its alert before being let go. */
+const AUTO_CLEAR_ATTEMPTS = 5;
 
 /**
  * Per-source admission control (RSK-45: "trap floods can overwhelm the alert
@@ -80,7 +84,20 @@ export class EventPipeline {
     this.rules = { at: 0, byTenant: new Map() };
     this.sources = { at: 0, byAddress: new Map() };
     this.tenantId = null;
+    this.pendingClears = new Map();
     this.stats = { received: 0, stored: 0, raised: 0, cleared: 0, dropped: 0, throttled: 0 };
+
+    this.clearTimer = setInterval(
+      () => this.flushAutoClears().catch((err) =>
+        this.log.error({ err }, 'auto-clear flush failed')),
+      AUTO_CLEAR_FLUSH_MS);
+    this.clearTimer.unref();
+  }
+
+  /** Stop the flusher, draining whatever is pending first. */
+  async stop() {
+    clearInterval(this.clearTimer);
+    await this.flushAutoClears().catch(() => {});
   }
 
   /**
@@ -250,7 +267,14 @@ export class EventPipeline {
     const state = severityToServiceState(decision.severity);
     await this.#publishState(event, decision, state);
 
-    if (decision.autoClearSeconds) await this.#scheduleAutoClear(event, decision);
+    /* Arming the deadline is deliberately NOT awaited here. The alert row it
+       attaches to is created by the correlation engine from the message we
+       just published, so it does not exist yet — and waiting for it on the
+       hot path was a throughput bug with the shipped rule set, every one of
+       which sets an auto-clear. Under a trap flood each raising event stalled
+       the receiver's drain loop for up to a second and a half while it
+       retried, which is precisely the moment a receiver must not stall. */
+    if (decision.autoClearSeconds) this.#armAutoClear(event, decision);
   }
 
   async #clear(event, decision) {
@@ -276,29 +300,86 @@ export class EventPipeline {
   }
 
   /**
-   * Record the deadline by which an event-born alert closes itself. The row
-   * is written against whichever alert the correlation engine ends up
-   * opening for this (device, check) — so the write is deferred just far
-   * enough for that row to exist, and is idempotent if it already does.
+   * Remember that this (device, check) should close itself, and let the
+   * flusher attach the deadline to whatever alert row the correlation engine
+   * opens for it.
+   *
+   * Keyed by the alert's identity rather than by event, so a thousand traps
+   * from one flapping interface arm one deadline and refresh it — which is
+   * also the semantics wanted, since the clock measures silence from the
+   * device rather than age of the alert.
    */
-  async #scheduleAutoClear(event, decision) {
-    const at = new Date(Date.now() + decision.autoClearSeconds * 1000);
-    // The correlation engine opens the alert on the same event we just
-    // published; a short retry loop is simpler and more honest than a
-    // distributed handshake for something this small.
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { rowCount } = await this.pg.query(
-        `INSERT INTO alert_auto_clear (alert_id, clear_at, rule_id)
-         SELECT id, $3, $4 FROM alerts
-          WHERE tenant_id = $1 AND device_name = $2 AND check_name = $5
-            AND status IN ('open','acknowledged','suppressed')
-          ON CONFLICT (alert_id) DO UPDATE SET clear_at = EXCLUDED.clear_at`,
-        [event.tenantId, event.deviceName, at, decision.ruleId, decision.checkName]);
-      if (rowCount > 0) return;
-      await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+  #armAutoClear(event, decision) {
+    const key = `${event.tenantId}|${event.deviceName}|${decision.checkName}`;
+    this.pendingClears.set(key, {
+      tenantId: event.tenantId,
+      deviceName: event.deviceName,
+      checkName: decision.checkName,
+      at: new Date(Date.now() + decision.autoClearSeconds * 1000),
+      ruleId: decision.ruleId,
+    });
+    // A flood must not grow this without bound either.
+    if (this.pendingClears.size > 20_000) {
+      this.flushAutoClears().catch(() => {});
     }
-    this.log.debug({ check: decision.checkName },
-      'no alert row to attach an auto-clear deadline to');
+  }
+
+  /**
+   * Attach every pending deadline in one statement.
+   *
+   * Runs on a timer, off the receive path. An entry that finds no alert row
+   * yet is kept for the next pass — the correlation engine may still be
+   * opening it — and dropped once it is older than the grace period, because
+   * an alert that never appeared is one the engine suppressed or deduped,
+   * and there is nothing to close.
+   */
+  async flushAutoClears(now = Date.now()) {
+    if (!this.pendingClears.size) return 0;
+    const entries = [...this.pendingClears.entries()];
+    this.pendingClears = new Map();
+
+    const params = [];
+    const tuples = entries.map(([, c], i) => {
+      const o = i * 5;
+      params.push(c.tenantId, c.deviceName, c.checkName, c.at, c.ruleId);
+      return `($${o + 1}::uuid, $${o + 2}, $${o + 3}, $${o + 4}::timestamptz, $${o + 5}::uuid)`;
+    }).join(',');
+
+    let attached = 0;
+    try {
+      const { rows } = await this.pg.query(
+        `WITH pending (tenant_id, device_name, check_name, clear_at, rule_id)
+              AS (VALUES ${tuples})
+         INSERT INTO alert_auto_clear (alert_id, clear_at, rule_id)
+         SELECT a.id, p.clear_at, p.rule_id
+           FROM pending p
+           JOIN alerts a
+             ON a.tenant_id = p.tenant_id AND a.device_name = p.device_name
+            AND a.check_name = p.check_name
+            AND a.status IN ('open','acknowledged','suppressed')
+         ON CONFLICT (alert_id) DO UPDATE SET clear_at = EXCLUDED.clear_at
+         RETURNING alert_id`,
+        params);
+      attached = rows.length;
+    } catch (err) {
+      this.log.error({ err }, 'arming auto-clear deadlines failed');
+      // Put them back; the next pass tries again.
+      for (const [k, v] of entries) this.pendingClears.set(k, v);
+      return 0;
+    }
+
+    // Anything that found no alert is retried until the grace period, then
+    // let go: the engine suppressed or deduped it, so there is nothing to close.
+    if (attached < entries.length) {
+      for (const [k, c] of entries) {
+        c.attempts = (c.attempts ?? 0) + 1;
+        if (c.attempts <= AUTO_CLEAR_ATTEMPTS && !this.pendingClears.has(k)) {
+          this.pendingClears.set(k, c);
+        }
+      }
+    }
+    void now;
+    return attached;
   }
 
   /** Severity to colour an unmatched syslog line with in the console. */

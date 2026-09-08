@@ -16,6 +16,8 @@
  * discovered — per-session forensics is not on offer here.
  */
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Windows longer than this read the hourly rollup instead of raw rows. */
 export const ROLLUP_AFTER_HOURS = 48;
 
@@ -37,7 +39,9 @@ export default async function flowRoutes(fastify) {
   function scope(request, params) {
     params.push(request.user.tenantId);
     let where = `tenant_id = $${params.length}`;
-    if (request.query?.device) {
+    /* A device filter that is not a uuid must not reach Postgres, where it
+       becomes a 22P02 and a 500 for what is really a bad request. */
+    if (request.query?.device && UUID_RE.test(request.query.device)) {
       params.push(request.query.device);
       where += ` AND device_id = $${params.length}`;
     }

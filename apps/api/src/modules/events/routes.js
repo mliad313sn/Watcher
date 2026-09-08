@@ -21,6 +21,9 @@ import { evaluateEvent, compilePattern, MAX_PATTERN_LENGTH } from '@watcher/shar
 
 const RULES_CHANGED = 'watcher:events:rules-changed';
 
+/** How far back a search reaches when the caller does not say. */
+const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const RULE_PROPERTIES = {
   name: { type: 'string', minLength: 1, maxLength: 200 },
   source: { type: 'string', enum: ['trap', 'syslog'], nullable: true },
@@ -48,6 +51,11 @@ export function rowToRule(r) {
   };
 }
 
+const UUID_PARAM = {
+  params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } },
+    required: ['id'] },
+};
+
 export default async function eventRoutes(fastify) {
   const announce = () => fastify.redis.publish(RULES_CHANGED, '1').catch(() => {});
 
@@ -66,7 +74,13 @@ export default async function eventRoutes(fastify) {
       params.push(Number(q.maxSeverity));
       where.push(`severity <= $${params.length}`);
     }
-    if (q.since) { params.push(q.since); where.push(`time >= $${params.length}`); }
+    /* Always bounded in time. Without a floor, a text search that matches
+       nothing walks every chunk of the retention window before returning an
+       empty page — and the one thing an operator does after an incident is
+       search for a string that is not there. */
+    const since = q.since ?? new Date(Date.now() - DEFAULT_WINDOW_MS).toISOString();
+    params.push(since);
+    where.push(`time >= $${params.length}`);
     if (q.q) {
       // Substring, not full text: an operator searching events is looking
       // for an interface name or an IP, and a stemmer would lose both.
@@ -85,7 +99,7 @@ export default async function eventRoutes(fastify) {
         ORDER BY time DESC
         LIMIT $${params.length}`,
       params);
-    return { events: rows, limit };
+    return { events: rows, limit, since };
   });
 
   /** Volume by sender — the "who is shouting" view, served from the rollup. */
@@ -145,7 +159,8 @@ export default async function eventRoutes(fastify) {
   });
 
   fastify.patch('/rules/:id', {
-    schema: { body: { type: 'object', properties: RULE_PROPERTIES, additionalProperties: false } },
+    schema: { ...UUID_PARAM,
+      body: { type: 'object', properties: RULE_PROPERTIES, additionalProperties: false } },
     preHandler: fastify.requireRole('operator'),
   }, async (request, reply) => {
     const b = request.body ?? {};
@@ -177,6 +192,7 @@ export default async function eventRoutes(fastify) {
   });
 
   fastify.delete('/rules/:id', {
+    schema: UUID_PARAM,
     preHandler: fastify.requireRole('operator'),
   }, async (request, reply) => {
     const { rowCount } = await fastify.pg.query(
@@ -239,6 +255,7 @@ export default async function eventRoutes(fastify) {
   });
 
   fastify.delete('/sources/:id', {
+    schema: UUID_PARAM,
     preHandler: fastify.requireRole('operator'),
   }, async (request, reply) => {
     const { rowCount } = await fastify.pg.query(

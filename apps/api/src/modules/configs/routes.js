@@ -17,6 +17,18 @@
  */
 import { diffConfigs, driftStatus, VENDOR_PROFILES } from '@watcher/shared';
 
+/* Path parameters are uuids in every one of these routes. Validated here so
+   a malformed one answers 400 rather than reaching Postgres, becoming a
+   22P02, and surfacing as a 500 for what is plainly a bad request. */
+const DEVICE_PARAM = {
+  params: { type: 'object', required: ['deviceId'],
+    properties: { deviceId: { type: 'string', format: 'uuid' } } },
+};
+const ID_PARAM = {
+  params: { type: 'object', required: ['id'],
+    properties: { id: { type: 'string', format: 'uuid' } } },
+};
+
 export default async function configRoutes(fastify) {
   /** Fleet view: who is drifting, who has never been captured, who is failing. */
   fastify.get('/', { preHandler: fastify.requireRole('viewer') }, async (request) => {
@@ -58,7 +70,7 @@ export default async function configRoutes(fastify) {
   });
 
   /** Version history for one device — metadata only, never content. */
-  fastify.get('/:deviceId', { preHandler: fastify.requireRole('viewer') }, async (request) => {
+  fastify.get('/:deviceId', { schema: DEVICE_PARAM, preHandler: fastify.requireRole('viewer') }, async (request) => {
     const { rows } = await fastify.pg.query(
       `SELECT c.id, c.content_hash, c.captured_at, c.vendor, c.raw_bytes,
               c.lines_added, c.lines_removed,
@@ -80,7 +92,7 @@ export default async function configRoutes(fastify) {
   });
 
   /** One version's content. Operator+, for the reason at the top of the file. */
-  fastify.get('/version/:id', { preHandler: fastify.requireRole('operator') }, async (request, reply) => {
+  fastify.get('/version/:id', { schema: ID_PARAM, preHandler: fastify.requireRole('operator') }, async (request, reply) => {
     const { rows } = await fastify.pg.query(
       `SELECT id, device_id, content, content_hash, vendor, captured_at
          FROM device_configs WHERE id = $1 AND tenant_id = $2`,
@@ -95,6 +107,7 @@ export default async function configRoutes(fastify) {
    * wants, rather than the previous capture.
    */
   fastify.get('/:deviceId/diff', {
+    schema: DEVICE_PARAM,
     preHandler: fastify.requireRole('operator'),
   }, async (request, reply) => {
     const { deviceId } = request.params;
@@ -157,6 +170,7 @@ export default async function configRoutes(fastify) {
    */
   fastify.post('/:deviceId/approve', {
     schema: {
+      ...DEVICE_PARAM,
       body: {
         type: 'object',
         required: ['configId'],
@@ -246,6 +260,7 @@ export default async function configRoutes(fastify) {
   });
 
   fastify.delete('/targets/:deviceId', {
+    schema: DEVICE_PARAM,
     preHandler: fastify.requireRole('admin'),
   }, async (request, reply) => {
     // The captured history is deliberately kept: turning backup off is not a

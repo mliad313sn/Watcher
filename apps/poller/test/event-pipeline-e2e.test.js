@@ -32,7 +32,7 @@ function fakePg({ devices = [], sources = [], rules = [] } = {}) {
       if (/FROM devices WHERE address/.test(sql)) return { rows: devices };
       if (/FROM event_sources/.test(sql)) return { rows: sources };
       if (/FROM event_rules/.test(sql)) return { rows: rules };
-      if (/INSERT INTO alert_auto_clear/.test(sql)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO alert_auto_clear/.test(sql)) return { rows: [{ alert_id: 'a1' }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     },
   };
@@ -252,16 +252,29 @@ test('a flood is admitted up to the ceiling and then throttled', async () => {
 });
 
 test('an auto-clearing rule records a deadline for the alert it opened', async () => {
+  // Arming happens off the receive path: handling queues the deadline, and
+  // the flusher attaches it in one statement once the correlation engine has
+  // had a chance to open the alert. Waiting for that inline was a throughput
+  // bug — see release-review.test.js.
   const pg = fakePg({ devices: [knownDevice], rules: [rule()] });
-  await withReceiver({ pg, tsdb: fakeTsdb(), redis: fakeRedis() }, async ({ receiver, port }) => {
-    await deliver(receiver, port, '<27>1 2026-09-08T22:14:15Z sw1 bgpd - - - down');
-    const armed = pg.calls.find((c) => /INSERT INTO alert_auto_clear/.test(c.sql));
-    assert.ok(armed, 'a deadline should have been armed');
-    assert.equal(armed.params[0], TENANT);
-    assert.equal(armed.params[1], 'sw1');
-    assert.equal(armed.params[4], 'syslog bgpd');
-    assert.ok(armed.params[2] > new Date(), 'the deadline is in the future');
-  });
+  await withReceiver({ pg, tsdb: fakeTsdb(), redis: fakeRedis() },
+    async ({ receiver, pipeline, port }) => {
+      await deliver(receiver, port, '<27>1 2026-09-08T22:14:15Z sw1 bgpd - - - down');
+
+      assert.equal(pipeline.pendingClears.size, 1, 'a deadline is queued');
+      const pending = [...pipeline.pendingClears.values()][0];
+      assert.equal(pending.tenantId, TENANT);
+      assert.equal(pending.deviceName, 'sw1');
+      assert.equal(pending.checkName, 'syslog bgpd');
+      assert.ok(pending.at > new Date(), 'the deadline is in the future');
+
+      await pipeline.flushAutoClears();
+      const armed = pg.calls.find((c) => /INSERT INTO alert_auto_clear/.test(c.sql));
+      assert.ok(armed, 'and the flush attaches it');
+      assert.equal(armed.params[1], 'sw1');
+      assert.equal(armed.params[2], 'syslog bgpd');
+      await pipeline.stop();
+    });
 });
 
 test('a receiver failure never takes the process down', async () => {

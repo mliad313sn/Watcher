@@ -29,6 +29,32 @@ const secret = (prefix) => `${prefix}_${crypto.randomBytes(32).toString('base64u
 /** Enrolment secrets are short-lived: a stale one is an unnecessary risk. */
 const ENROL_TTL_MINUTES = 60;
 
+/**
+ * Admission control for the one unauthenticated route here. In memory on
+ * purpose: a restart forgiving the counters is acceptable, and a table of
+ * attacker-supplied addresses is not. Generous, because a whole site can
+ * arrive behind one corporate gateway and locking that out is a denial of
+ * service an attacker would be glad to trigger.
+ */
+const ENROL_LIMIT = 20;
+const ENROL_WINDOW_MS = 15 * 60_000;
+
+const enrolLimiter = {
+  attempts: new Map(),
+  /** @returns {number} seconds to wait, or 0 when admitted. */
+  admit(ip, now = Date.now()) {
+    let a = this.attempts.get(ip);
+    if (!a || now >= a.until) { a = { n: 0, until: now + ENROL_WINDOW_MS }; this.attempts.set(ip, a); }
+    if (this.attempts.size > 10_000) {
+      for (const [k, v] of this.attempts) if (now >= v.until) this.attempts.delete(k);
+      if (this.attempts.size > 10_000) this.attempts.clear();
+    }
+    if (a.n >= ENROL_LIMIT) return Math.ceil((a.until - now) / 1000);
+    a.n++;
+    return 0;
+  },
+};
+
 export default async function proxyRoutes(fastify) {
   /**
    * Resolve X-Proxy-Token into the proxy it belongs to. Returns null rather
@@ -213,8 +239,17 @@ export default async function proxyRoutes(fastify) {
         additionalProperties: false,
       },
     },
-    config: { rateLimit: false },
   }, async (request, reply) => {
+    /* The only unauthenticated route in this module, and therefore the only
+       one an attacker can reach without a credential. The secret itself is
+       32 bytes of CSPRNG and is not guessable, but every attempt costs a
+       database round trip, so the endpoint is rate limited by source address
+       — a proxy enrols once in its life and re-enrols only when rebuilt. */
+    const wait = enrolLimiter.admit(request.ip);
+    if (wait) {
+      reply.header('Retry-After', wait);
+      return reply.code(429).send({ error: 'too many enrolment attempts' });
+    }
     const proxyToken = secret('wpt');
     const { rows } = await fastify.pg.query(
       `UPDATE proxies
