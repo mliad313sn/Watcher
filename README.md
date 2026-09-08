@@ -84,6 +84,12 @@ generic event API inbound, and Prometheus exposition outbound — see
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Where this actually stands
+
+An honest competitive statement rather than a marketing one, including what
+Watcher is *not*, is in
+[docs/COMPETITIVE-POSITION.md](docs/COMPETITIVE-POSITION.md).
+
 ## Upgrading
 
 There is a migration runner from 1.1.0 onward:
