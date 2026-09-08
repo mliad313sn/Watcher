@@ -22,6 +22,14 @@ correlation, maintenance windows, on-call and runbooks apply unchanged — see
 [docs/EVENTS.md](docs/EVENTS.md). That closes the gap polling cannot see:
 what happened *between* two polls.
 
+**Distributed polling** puts a proxy *at* the site: it polls locally and
+pushes over one outbound HTTPS connection, so a site behind NAT or a firewall
+nobody will open is monitored without inbound access — and no device password
+or database credential ever leaves the centre. A proxy that goes silent
+raises a critical alert naming how many devices stopped being watched, because
+a site nothing is checking otherwise looks healthy
+([docs/PROXIES.md](docs/PROXIES.md)).
+
 **Flow analytics** answers the next question — who is *filling* the link.
 NetFlow v5/v9, IPFIX and sFlow on one port, folded at ingest into
 conversations, with top talkers, per-application share and per-interface

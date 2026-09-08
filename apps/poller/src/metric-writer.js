@@ -27,11 +27,35 @@ export class MetricWriter {
   }
 
   /**
+   * Send samples to a remote-site proxy agent instead of the database.
+   *
+   * A proxy holds no database credential — that is half the reason a site
+   * will host one at all — so in proxy mode every sample leaves through the
+   * agent's store-and-forward buffer over the one outbound HTTPS connection.
+   */
+  forwardTo(agent) {
+    this.agent = agent;
+    this.log.info('metrics will be forwarded to the central API, not written locally');
+  }
+
+  /**
    * @param {{deviceId: string, metric: string, instance?: string,
    *          value: number, tags?: object, time?: Date}} sample
    */
   push(sample) {
     if (!Number.isFinite(sample.value)) return;
+    if (this.agent) {
+      this.agent.report({
+        metrics: [{
+          deviceId: sample.deviceId,
+          metric: sample.metric,
+          instance: sample.instance ?? '',
+          value: sample.value,
+          at: (sample.time ?? new Date()).toISOString(),
+        }],
+      });
+      return;
+    }
     this.buffer.push({
       time: sample.time ?? new Date(),
       deviceId: sample.deviceId,

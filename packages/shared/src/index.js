@@ -3,6 +3,7 @@ export * from './nagios-states.js';
 export * from './syslog.js';
 export * from './events.js';
 export * from './flow.js';
+export * from './forward.js';
 
 /** Redis key/channel names — single source of truth across services. */
 export const REDIS_KEYS = Object.freeze({

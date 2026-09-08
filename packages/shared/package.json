@@ -10,6 +10,7 @@
     "./discovery-engine": "./src/discovery-engine.js",
     "./syslog": "./src/syslog.js",
     "./events": "./src/events.js",
-    "./flow": "./src/flow.js"
+    "./flow": "./src/flow.js",
+    "./forward": "./src/forward.js"
   }
 }

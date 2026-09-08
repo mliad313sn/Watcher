@@ -30,6 +30,7 @@ import configRoutes from './modules/config/routes.js';
 import ingestRoutes from './modules/ingest/routes.js';
 import eventRoutes from './modules/events/routes.js';
 import flowRoutes from './modules/flow/routes.js';
+import proxyRoutes, { ProxyWatchdog } from './modules/proxy/routes.js';
 
 import { NagiosStreamer } from './modules/nagios/streamer.js';
 import { CorrelationEngine } from './modules/alerts/correlation-engine.js';
@@ -136,6 +137,7 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
   await fastify.register(ingestRoutes, { prefix: '/api/ingest' });
   await fastify.register(eventRoutes, { prefix: '/api/events' });
   await fastify.register(flowRoutes, { prefix: '/api/flow' });
+  await fastify.register(proxyRoutes, { prefix: '/api/proxy' });
 
   // Optionally serve the built web UI from the same origin as the API, so the
   // whole product is reachable as a single service (no dev proxy). API and
@@ -198,6 +200,13 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
     // Expose the notifier so routes can offer "send a test notification".
     fastify.decorate('notifier', notifier);
 
+    // A proxy that goes silent takes a whole site's monitoring with it, and
+    // the site then looks healthy because nothing is checking it. Silence is
+    // therefore itself an alert, raised through the ordinary pipeline.
+    const proxyWatchdog = new ProxyWatchdog({
+      pg: fastify.pg, redis: fastify.redis, log: fastify.log,
+    });
+
     const anomaly = config.anomaly?.enabled
       ? new AnomalyEngine(
           { pg: fastify.pg, tsdb: fastify.tsdb, redis: fastify.redis, log: fastify.log },
@@ -209,9 +218,11 @@ export async function buildApp(config, { withBackgroundJobs = true } = {}) {
       await correlator.start();
       await notifier.start();
       anomaly?.start();
+      proxyWatchdog.start();
     });
     fastify.addHook('onClose', async () => {
       streamer.stop();
+      proxyWatchdog.stop();
       await correlator.stop();
       await notifier.stop();
       anomaly?.stop();

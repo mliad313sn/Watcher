@@ -91,6 +91,41 @@ import('./lldp.js').then(({ discoverLldpTopology }) => {
   setInterval(sweep, Number(process.env.LLDP_INTERVAL_MS ?? 3_600_000)).unref();
 });
 
+// Proxy mode: this poller runs at a remote site and reaches nothing but the
+// central API, outbound only. It owns the devices assigned to it centrally,
+// buffers observations when the link fails, and heartbeats so the far end
+// can raise when it goes silent. Local (non-proxy) mode is unchanged.
+if (process.env.WATCHER_PROXY_URL) {
+  const { ProxyAgent } = await import('./proxy/agent.js');
+  const agent = new ProxyAgent({
+    url: process.env.WATCHER_PROXY_URL,
+    token: process.env.WATCHER_PROXY_TOKEN,
+    enrol: process.env.WATCHER_PROXY_ENROL,
+    version: process.env.WATCHER_VERSION ?? '1.0.0-rc.1',
+    maxBuffer: process.env.WATCHER_PROXY_BUFFER,
+  }, {
+    log,
+    // Assignments replace whatever this proxy was polling: the central
+    // console is the authority on which site owns which device.
+    onAssignments: (devices) => scheduler.setDevices(devices),
+  });
+  // Device credentials stay at the site: the assignment names one, and the
+  // proxy resolves the name from its own configuration file.
+  if (process.env.WATCHER_PROXY_CREDENTIALS) {
+    const { readFileSync } = await import('node:fs');
+    scheduler.localCredentials = JSON.parse(
+      readFileSync(process.env.WATCHER_PROXY_CREDENTIALS, 'utf8'));
+  }
+  // The connectors write through the agent rather than to the databases —
+  // a proxy holds no database credential, which is half the reason a site
+  // will host one at all.
+  writer.forwardTo(agent);
+  await agent.start({
+    flushMs: Number(process.env.WATCHER_PROXY_FLUSH_MS ?? 15_000),
+  });
+  process.on('exit', () => agent.stop());
+}
+
 // Event plane: SNMP traps and syslog. Off unless a port is configured —
 // see apps/poller/src/receivers/index.js for why that default is deliberate.
 const receivers = await import('./receivers/index.js')

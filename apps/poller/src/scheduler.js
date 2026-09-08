@@ -29,10 +29,49 @@ export class Scheduler {
     this.jobs = new Map();     // assignment id → {timer, assignment}
     this.credCache = new Map();// credential id → decrypted blob (invalidated on reload)
     this.reloadTimer = null;
+    // Proxy mode: the assignment list arrives from the central API rather
+    // than from a database this host cannot reach.
+    this.assigned = false;
+  }
+
+  /**
+   * Take the device list from the central API (proxy mode).
+   *
+   * A remote proxy has no database, so `reload()` has nothing to read. The
+   * central console is the authority on which site owns which device, and
+   * this replaces whatever was running — a device moved to another proxy
+   * must stop being polled here, or two sites report on it and the alert
+   * stack sees a device that flaps between two truths.
+   *
+   * Credentials are resolved from the proxy's OWN local configuration by the
+   * name the assignment carries. No device password ever leaves the centre.
+   */
+  setDevices(assignments) {
+    this.assigned = true;
+    clearInterval(this.reloadTimer);
+    this.reloadTimer = null;
+
+    const rows = (assignments ?? []).map((a) => ({
+      id: `${a.id}:${a.protocol}`,
+      protocol: a.protocol,
+      interval_s: a.interval_s ?? 60,
+      credential_id: null,
+      credential_ref: a.credential_ref ?? null,
+      config: a.config ?? {},
+      device_id: a.id,
+      name: a.name,
+      address: a.address,
+    }));
+    this.#applyAssignments(rows);
+    this.log.info({ assignments: rows.length }, 'assignments received from the central API');
+    return rows.length;
   }
 
   /** Decrypt + cache credentials so we don't hit the DB / KDF on every poll. */
-  async #cred(id) {
+  async #cred(id, ref) {
+    // Proxy mode: the assignment names a credential, and the secret lives in
+    // this host's own configuration. Nothing to fetch, nothing to decrypt.
+    if (this.assigned) return this.localCredentials?.[ref] ?? {};
     if (!id) return {};
     if (this.credCache.has(id)) return this.credCache.get(id);
     const cred = await this.getCredential(id);
@@ -55,6 +94,9 @@ export class Scheduler {
   }
 
   async reload() {
+    // In proxy mode the assignment list comes from the API; there is no
+    // database here to read one from.
+    if (this.assigned) return;
     this.credCache.clear(); // pick up credential rotations within a minute
     const { rows } = await this.pg.query(
       `SELECT pa.id, pa.protocol, pa.interval_s, pa.credential_id, pa.config,
@@ -63,6 +105,12 @@ export class Scheduler {
        JOIN devices d ON d.id = pa.device_id
        WHERE pa.enabled AND d.monitored`);
 
+    this.#applyAssignments(rows);
+    this.log.info({ assignments: rows.length }, 'poll assignments loaded');
+  }
+
+  /** Reconcile the running jobs against a desired assignment list. */
+  #applyAssignments(rows) {
     const seen = new Set();
     for (const row of rows) {
       seen.add(row.id);
@@ -89,7 +137,6 @@ export class Scheduler {
         this.jobs.delete(id);
       }
     }
-    this.log.info({ assignments: rows.length }, 'poll assignments loaded');
   }
 
   async #run(job) {
@@ -110,7 +157,7 @@ export class Scheduler {
     this.active++;
     const startedAt = Date.now();
     try {
-      const cred = await this.#cred(a.credential_id);
+      const cred = await this.#cred(a.credential_id, a.credential_ref);
       // Hard timeout so a hung connector (stuck WinRM fetch, dead AMI socket)
       // can't hold a concurrency slot forever and starve the fleet (issue M2).
       await this.#withTimeout(

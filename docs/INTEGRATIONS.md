@@ -99,6 +99,17 @@ documentation: [docs/EVENTS.md](EVENTS.md).
 All four arrive on one UDP port and fold into conversations at ingest.
 Full documentation: [docs/FLOW.md](FLOW.md).
 
+## Remote sites
+
+| Surface | How |
+|---|---|
+| **Proxy poller** | `WATCHER_PROXY_URL` on a poller at the site; one-time enrolment, then outbound HTTPS only. |
+| **Store-and-forward** | Observations are buffered across a WAN outage and committed only on the server's acknowledgement. |
+| **Silence watchdog** | A proxy that stops reporting raises a critical alert naming the devices that stopped being monitored. |
+
+Device credentials stay at the site — an assignment names a credential, it
+never carries one. Full documentation: [docs/PROXIES.md](PROXIES.md).
+
 ## Identity
 
 - **OIDC**: Keycloak, Authentik, Okta, Entra ID, Google — `SSO_OIDC_*` env,
