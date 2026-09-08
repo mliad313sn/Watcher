@@ -1,0 +1,610 @@
+<title>The Gate That Refused</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ink:      #101A20;
+    --ink-soft: #3D4C54;
+    --ink-dim:  #6B7A81;
+    --paper:    #F2F4F3;
+    --paper-2:  #E9ECEA;
+    --card:     #FBFCFB;
+    --rule:     #D3D9D6;
+    --rule-firm:#B6BFBB;
+    --pass:     #0F5C4A;
+    --pass-bg:  #E3EDE8;
+    --refuse:   #A6341F;
+    --refuse-bg:#F4E5E0;
+    --gap:      #8A6A18;
+    --gap-bg:   #F1EBDC;
+
+    --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+    --sans:  "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --mono:  "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --measure: 34rem;
+    --rail: 8.5rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink:      #E6EBE8;
+      --ink-soft: #AEBBB6;
+      --ink-dim:  #7C8B87;
+      --paper:    #0D1417;
+      --paper-2:  #131C20;
+      --card:     #141E22;
+      --rule:     #253238;
+      --rule-firm:#36474E;
+      --pass:     #5FC0A2;
+      --pass-bg:  #10261F;
+      --refuse:   #E4816A;
+      --refuse-bg:#2A1712;
+      --gap:      #C9A552;
+      --gap-bg:   #241D0F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink:      #E6EBE8;
+    --ink-soft: #AEBBB6;
+    --ink-dim:  #7C8B87;
+    --paper:    #0D1417;
+    --paper-2:  #131C20;
+    --card:     #141E22;
+    --rule:     #253238;
+    --rule-firm:#36474E;
+    --pass:     #5FC0A2;
+    --pass-bg:  #10261F;
+    --refuse:   #E4816A;
+    --refuse-bg:#2A1712;
+    --gap:      #C9A552;
+    --gap-bg:   #241D0F;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    padding: 0 1.5rem 6rem;
+  }
+
+  .wrap { max-width: calc(var(--rail) + var(--measure) + 3rem); margin: 0 auto; }
+
+  /* ── the rail ─────────────────────────────────────────────────── */
+  .row { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); gap: 3rem; }
+  .rail {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    padding-top: .55rem;
+    font-weight: 500;
+  }
+  @media (max-width: 780px) {
+    .row { grid-template-columns: 1fr; gap: .5rem; }
+    .rail { padding-top: 0; }
+    :root { --rail: 0rem; }
+  }
+
+  /* ── masthead ─────────────────────────────────────────────────── */
+  header { padding: 4.5rem 0 0; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-dim); margin: 0 0 1.6rem;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(3rem, 8vw, 5.1rem); line-height: .96;
+    letter-spacing: -.015em; margin: 0 0 1.1rem; text-wrap: balance;
+  }
+  .standfirst {
+    font-family: var(--serif); font-style: italic;
+    font-size: clamp(1.2rem, 2.6vw, 1.5rem); line-height: 1.42;
+    color: var(--ink-soft); max-width: 30rem; margin: 0 0 2.4rem;
+  }
+  .byline {
+    font-family: var(--mono); font-size: .72rem; color: var(--ink-dim);
+    letter-spacing: .04em; border-top: 1px solid var(--rule);
+    padding-top: 1rem; margin: 0;
+  }
+
+  /* ── evidence ledger ──────────────────────────────────────────── */
+  .ledger {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0; border: 1px solid var(--rule-firm); margin: 3rem 0 0;
+    background: var(--card);
+  }
+  .ledger div {
+    padding: 1.05rem 1.1rem; border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .ledger dt {
+    font-family: var(--mono); font-size: .64rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-dim); margin: 0 0 .35rem;
+  }
+  .ledger dd {
+    margin: 0; font-family: var(--serif); font-size: 1.85rem;
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .ledger dd span { font-family: var(--sans); font-size: .78rem; color: var(--ink-dim); }
+
+  /* ── sections ─────────────────────────────────────────────────── */
+  section { padding-top: 4.2rem; }
+  h2 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.1;
+    letter-spacing: -.01em; margin: 0 0 1.4rem; text-wrap: balance;
+  }
+  h3 {
+    font-size: 1.02rem; font-weight: 600; line-height: 1.35;
+    margin: 2.6rem 0 .7rem; letter-spacing: -.005em; text-wrap: balance;
+  }
+  p { margin: 0 0 1.05rem; max-width: var(--measure); }
+  a { color: inherit; text-decoration-color: var(--rule-firm); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--paper-2); padding: .1em .32em; border-radius: 2px;
+  }
+
+  /* the numbered findings — a real ranking, so it is numbered */
+  .finding { border-top: 1px solid var(--rule); padding-top: 1.6rem; margin-top: 2.4rem; }
+  .finding:first-of-type { margin-top: 2rem; }
+  .n {
+    font-family: var(--mono); font-size: .7rem; font-weight: 600;
+    color: var(--pass); letter-spacing: .08em; display: block; margin-bottom: .5rem;
+  }
+  .finding.gap-item .n { color: var(--gap); }
+  .finding h3 { margin-top: 0; font-size: 1.15rem; }
+
+  /* ── the refusals: the heart of the report ────────────────────── */
+  .refusal {
+    font-family: var(--mono); font-size: .82rem; line-height: 1.55;
+    background: var(--refuse-bg); border-left: 3px solid var(--refuse);
+    color: var(--ink); padding: .95rem 1.15rem; margin: 1.2rem 0 1.3rem;
+    overflow-x: auto; max-width: var(--measure);
+  }
+  .refusal .code { color: var(--refuse); font-weight: 600; }
+  .refusal .req { color: var(--ink-dim); display: block; margin-bottom: .35rem; }
+
+  pre.evidence {
+    font-family: var(--mono); font-size: .8rem; line-height: 1.6;
+    background: var(--card); border: 1px solid var(--rule);
+    padding: .95rem 1.15rem; margin: 1.2rem 0 1.3rem;
+    overflow-x: auto; max-width: var(--measure); white-space: pre;
+  }
+  pre.evidence .pass { color: var(--pass); }
+  pre.evidence .fail { color: var(--refuse); }
+  pre.evidence .dim  { color: var(--ink-dim); }
+
+  blockquote {
+    margin: 1.3rem 0; padding-left: 1.15rem;
+    border-left: 2px solid var(--rule-firm);
+    font-family: var(--serif); font-style: italic;
+    font-size: 1.12rem; line-height: 1.5; color: var(--ink-soft);
+    max-width: var(--measure);
+  }
+
+  /* ── gaps ─────────────────────────────────────────────────────── */
+  .gaps { display: grid; gap: 0; border-top: 1px solid var(--rule); margin-top: 2rem; }
+  .gaps article { border-bottom: 1px solid var(--rule); padding: 1.5rem 0; }
+  .gaps h3 { margin: 0 0 .5rem; font-size: 1.02rem; }
+  .gaps p { margin: 0 0 .7rem; }
+  .gaps p:last-child { margin-bottom: 0; }
+  .tag {
+    font-family: var(--mono); font-size: .62rem; letter-spacing: .1em;
+    text-transform: uppercase; padding: .2em .5em; border-radius: 2px;
+    background: var(--gap-bg); color: var(--gap); font-weight: 600;
+    vertical-align: .18em; margin-left: .5rem; white-space: nowrap;
+  }
+  .tag.blocker { background: var(--refuse-bg); color: var(--refuse); }
+  .tag.fixed   { background: var(--pass-bg);   color: var(--pass); }
+
+  /* ── verdict ──────────────────────────────────────────────────── */
+  .verdict {
+    background: var(--ink); color: var(--paper);
+    padding: 2.6rem 2.2rem; margin-top: 2rem;
+  }
+  .verdict h2 { color: var(--paper); margin-top: 0; }
+  .verdict p { color: var(--paper); opacity: .88; max-width: 32rem; }
+  .verdict p.lede {
+    font-family: var(--serif); font-size: 1.4rem; line-height: 1.4;
+    opacity: 1; margin-bottom: 1.3rem;
+  }
+  .verdict strong { color: #fff; }
+  :root[data-theme="dark"] .verdict,
+  :root:not([data-theme="light"]) .verdict { border: 1px solid var(--rule-firm); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .verdict { border: none; } }
+
+  ol.roadmap { margin: 1.5rem 0 0; padding: 0; list-style: none; counter-reset: r; max-width: var(--measure); }
+  ol.roadmap li {
+    counter-increment: r; position: relative; padding: .85rem 0 .85rem 2.4rem;
+    border-top: 1px solid var(--rule);
+  }
+  ol.roadmap li::before {
+    content: counter(r); position: absolute; left: 0; top: .95rem;
+    font-family: var(--mono); font-size: .72rem; font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  footer {
+    margin-top: 4.5rem; padding-top: 1.2rem; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: .7rem; color: var(--ink-dim);
+    line-height: 1.7;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .refusal { transition: none; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="row">
+    <div class="rail">Delivery committee<br>08 Sep 2026</div>
+    <div>
+      <p class="eyebrow">Evaluation from use · Watcher 1.1</p>
+      <h1>The Gate That Refused</h1>
+      <p class="standfirst">Meridian would not let us mark finished work as
+        finished. That twenty-minute obstruction is the whole reason to use it.</p>
+      <p class="byline">Meridian IT-PMO 5.9.0 · installed, seeded and used to govern
+        the Watcher 1.1 release · every claim below is something that happened</p>
+    </div>
+  </div>
+</header>
+
+<div class="row">
+  <div class="rail"></div>
+  <dl class="ledger">
+    <div><dt>Projects</dt><dd>5</dd></div>
+    <div><dt>Stages</dt><dd>56</dd></div>
+    <div><dt>Gates cleared</dt><dd>20</dd></div>
+    <div><dt>RAID closed</dt><dd>8<span>&thinsp;/&thinsp;9</span></dd></div>
+    <div><dt>Audit rows</dt><dd>180</dd></div>
+    <div><dt>Tests shipped</dt><dd>278<span>&thinsp;was 74</span></dd></div>
+  </dl>
+</div>
+
+<section>
+  <div class="row">
+    <div class="rail">§1 Method</div>
+    <div>
+      <h2>What it was actually used for</h2>
+      <p>The Watcher 1.1 release — five workstreams closing the gaps that separated a
+        polling-only monitoring platform from the products it competes with — was
+        planned, governed, gated and closed out in Meridian. Programme <code>WCH</code>:
+        SNMP traps, syslog, flow analytics, remote-site proxies, configuration drift.</p>
+      <p>The entire programme was driven <strong>through the REST API, headlessly</strong>,
+        without opening the interface once. That is itself a finding.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="row">
+    <div class="rail">§2 Benefits</div>
+    <div>
+      <h2>What Meridian does that mainstream PM tools do not</h2>
+      <p>Ranked by how much each one would change a buying decision.</p>
+
+      <div class="finding">
+        <span class="n">01</span>
+        <h3>The gate refuses. It does not warn.</h3>
+        <p>The first thing that happened when the trap and syslog work was complete:</p>
+        <div class="refusal">
+          <span class="req">PATCH /api/projects/PRJ-147/phase {"phase":"Closure"}</span>
+          <span class="code">→ 409</span> 1 evidence item outstanding for Gate 1 — Mandate
+        </div>
+        <p>Jira lets you drag a card to Done. Monday, Asana, Wrike and Smartsheet let you
+          set a status field to anything. Microsoft Project has no concept of an evidence
+          gate at all. In every one of them the gate is a convention a determined person
+          routes around in four seconds.</p>
+        <p>To get past it we had to file the charter, the architecture dossier, the test
+          evidence and the realisation report, give each a real artefact link, and have
+          each one approved. <strong>This is the single reason to choose Meridian.</strong>
+          Everything else is good engineering; this is a different product category.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">02</span>
+        <h3>Filing evidence and approving it are different acts</h3>
+        <div class="refusal">
+          <span class="req">POST /api/documents {"status":"Approved"}</span>
+          <span class="code">→ 400</span> A document is filed, then approved — approving is a
+          separate act, so that the trail shows who wrote the evidence and who accepted it
+        </div>
+        <p>An ownerless document cannot be approved at all, because the independence check
+          compares approver to owner and an absent owner matches nobody. Changing the owner
+          and approving in one call is refused too — that is how an owner signs their own
+          work in two steps.</p>
+        <p>No mainstream PM tool enforces separation of duties on approvals. ServiceNow SPM
+          and Planview can be configured toward it with workflow effort; here it is the
+          default and cannot be switched off.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">03</span>
+        <h3>Evidence must be a thing, on a host named in advance</h3>
+        <div class="refusal">
+          <span class="code">→ 400</span> Gate evidence needs its artefact — the link to the
+          piece itself, not only a status<br>
+          <span class="code">→ 400</span> No trusted document hosts are configured — name the
+          group's document estate before evidence can be approved
+        </div>
+        <p>The trusted-host list <strong>ships closed</strong>. An unconfigured control that
+          waves things through is the failure this product was blocked over, and it shows.
+          In Jira, evidence is a checkbox someone ticks.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">04</span>
+        <h3>The audit trail cannot be rewritten, and the database enforces it</h3>
+        <pre class="evidence"><span class="dim">-- server/migrations/001_core.sql</span>
+CREATE RULE audit_no_update AS ON UPDATE TO audit_event DO INSTEAD NOTHING;
+CREATE RULE audit_no_delete AS ON DELETE TO audit_event DO INSTEAD NOTHING;</pre>
+        <p>Not application code the next endpoint could bypass. The audit insert also shares
+          the mutation's transaction, so <strong>a change that is not audited does not
+          commit</strong>. Reading the trail is itself audited — a row appears saying
+          <code>Audit trail consulted</code>. We have not seen another PM tool do that.</p>
+        <p><em>Nuance:</em> <code>DO INSTEAD NOTHING</code> silently ignores an UPDATE rather
+          than raising, so an application bug that tries to rewrite history fails quietly.
+          The data is safe either way.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">05</span>
+        <h3>Concurrent edits collide instead of silently overwriting</h3>
+        <p>Every mutable row carries a version, every PATCH must state the version it read,
+          and a second writer gets a <code>409</code> — never a silent overwrite. One of the
+          nine build gates is <em>"client PATCH calls that do not name a version"</em>, so the
+          discipline cannot rot.</p>
+        <p>Jira, Asana, Monday and Notion are last-write-wins. If two people edit a risk in
+          the same minute, one loses their work and neither is told.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">06</span>
+        <h3>A project arrives able to be run</h3>
+        <p>Creating each project scaffolded <strong>eight stages, four gates, four evidence
+          documents and the PM's own resource allocation</strong>. The code says why:
+          <em>"A bare project row is not something anyone can run."</em> The gates were already
+          blocking before anything had been typed into them. In Jira you get an empty board.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">07</span>
+        <h3>The API is complete enough to run a programme headlessly</h3>
+        <p>Five projects, 56 stages, 25 milestones, 9 RAID items, 20 documents filed and
+          approved, 15 phase advances — all through REST, scripted.</p>
+        <p>Most PM tools' APIs are a second-class surface where the interesting operations are
+          missing or behave differently. Meridian's is the same surface the UI uses, with the
+          same rules applied in the same place. For an automated or AI-assisted delivery
+          process this is the difference between usable and decorative.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">08</span>
+        <h3>It holds itself to a standard it can prove</h3>
+        <pre class="evidence">$ npm test        <span class="pass">449 tests, 449 pass, 0 fail</span>
+$ npm run audit   <span class="pass">nine static gates, all pass</span>
+                  <span class="dim">· 21 screens × 4 roles = 84 renders, no exceptions
+                  · every route matches its published contract
+                  · every mutation carries an audit row</span></pre>
+        <p>A higher verification bar than most commercial PM products can demonstrate — and
+          checkable in ten minutes, because the source is right there.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">09</span>
+        <h3>Real earned value, not a progress bar</h3>
+        <p>SPI, CPI, EAC, VAC, TCPI and a forecast finish derived from schedule performance —
+          genuine EVM, behaviour-frozen and tested. Jira, Linear, Asana and Monday have no EVM
+          at all. Smartsheet and Wrike approximate it. This is the real thing.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">10</span>
+        <h3>No vendor, no telemetry, no licence check</h3>
+        <p>Three commands and it is running. Apache-2.0 with a patent grant. A default
+          installation makes no outbound network request, and the NOTICE shows you how to
+          verify that.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="row">
+    <div class="rail">§3 Gaps</div>
+    <div>
+      <h2>Where it falls short of other PM tools</h2>
+      <p>Stated as a buyer would state them.</p>
+
+      <div class="gaps">
+        <article>
+          <h3>It is not where the work happens — and there is no bridge to where it does
+            <span class="tag">Biggest objection</span></h3>
+          <p>Meridian says of itself: <em>"It is not a task manager, a time-and-billing system,
+            an ITSM tool, or an agile team board."</em> Fair. The consequence is concrete: the
+            delivery team's work lives in Jira, Azure DevOps, GitHub or Linear, and Meridian
+            has <strong>no native sync to any of them</strong>.</p>
+          <p>Everything we recorded — 56 stage completions, 25 milestones — we recorded twice:
+            once in the engineering repository, once here. Somebody re-enters status, and
+            re-entered status is stale status. This is the objection most likely to kill an
+            adoption.</p>
+        </article>
+
+        <article>
+          <h3>No chat, no notifications where people already are</h3>
+          <p>No Slack or Teams integration. There is a notification centre and an SMTP path
+            (unconfigured by default), but a PMO tool that cannot post the weekly digest into
+            the channel the programme lives in gets checked less often than one that can.</p>
+        </article>
+
+        <article>
+          <h3>No mobile</h3>
+          <p>No app, and no installable web app. A sponsor approving a gate from an airport
+            cannot.</p>
+        </article>
+
+        <article>
+          <h3>No in-app report builder</h3>
+          <p>Fourteen stable SQL views for Power BI, Excel, Tableau and Qlik — an honest,
+            durable answer, better than a proprietary export. But with no BI capability in the
+            PMO there is no drag-and-drop designer here, and Smartsheet or Monday will feel far
+            more capable.</p>
+        </article>
+
+        <article>
+          <h3>No vendor — restated as a cost</h3>
+          <p>Benefit 10 is also a risk. No support contract, no SLA, nobody on call. The
+            project says so plainly: <em>"If it breaks on a Sunday, you fix it or you wait."</em>
+            Disqualifying for a regulated programme that requires vendor indemnity, and no
+            amount of code quality substitutes for it.</p>
+        </article>
+
+        <article>
+          <h3>The decision record is mostly in French</h3>
+          <p>Code and interface are bilingual; the twenty-five documents explaining <em>why</em>
+            each decision was taken are largely French. The reasoning is the best thing about
+            this project, and most of it is currently unreadable to most of its potential
+            users.</p>
+        </article>
+
+        <article>
+          <h3>It has not run a real portfolio for a year</h3>
+          <p>Their own market committee says so. Our use was a full working day of intensive
+            scripted traffic — not twelve months, eight sites and two hundred users. Everything
+            about the design suggests it would hold. Nothing here proves it.</p>
+        </article>
+
+        <article>
+          <h3>Single instance by default</h3>
+          <p>The embedded database is a single-process engine, and multi-tenant SaaS is
+            explicitly not the model. A real deployment wants PostgreSQL, a second instance and
+            a tested backup — which the project lists as three blocking operational findings
+            that are <em>yours</em>, not the software's.</p>
+        </article>
+
+        <article>
+          <h3>No resource marketplace or skills matching</h3>
+          <p>Capacity, allocation, rotation, absence and timesheets — more than Jira, roughly
+            Smartsheet's level. Planview and Clarity go considerably further for organisations
+            needing skills-based supply and demand matching.</p>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="row">
+    <div class="rail">§4 Findings</div>
+    <div>
+      <h2>Two defects found by using it, both fixed</h2>
+      <p>Patch supplied: <code>docs/meridian/0001-meridian-first-run-and-audit-images.patch</code></p>
+
+      <div class="finding">
+        <span class="n">Finding 1</span>
+        <h3>Following the README exactly produces an empty instance
+          <span class="tag blocker">Blocker</span><span class="tag fixed">Fixed</span></h3>
+        <p>The README says: <em>"With no <code>DATABASE_URL</code> the server runs PGlite from
+          <code>server/.data/pgdata</code>."</em> It did not. <code>.env.example</code> sets
+          <code>PGLITE_DIR</code>, but <strong>nothing loads <code>.env</code></strong> —
+          <code>dotenv</code> is not a dependency and is imported nowhere — so the fallback was
+          an in-memory database.</p>
+        <pre class="evidence">$ npm run seed
+  <span class="dim">seeded 12 projects · 10 users · 7 meeting series</span>   <span class="fail">← into memory; dies with the process</span>
+$ npm run dev
+$ curl localhost:4173/api/auth/accounts
+  <span class="fail">{"seeded":false,"accounts":[]}</span>                     <span class="fail">← every documented password refused</span></pre>
+        <p>The failure is silent and total, and nothing in the output suggests what happened.
+          It is the first thing every new user meets.</p>
+        <p><strong>Fixed</strong> by making the code do what the README says, resolved from
+          <code>db.js</code> rather than the working directory. An explicit data directory still
+          wins — including <code>null</code>, which is how the audit harnesses ask for a
+          throwaway instance and must keep doing, or a sweep would overwrite the real book.
+          Plus <code>mkdir -p</code>: PGlite creates the last path element only.</p>
+      </div>
+
+      <div class="finding">
+        <span class="n">Finding 2</span>
+        <h3>Closing a register item recorded no before-image
+          <span class="tag fixed">Fixed</span></h3>
+        <p>The audit table carries before and after images and the writer supports them — but
+          among the call sites they are passed on <strong>deletions</strong> and a few
+          exceptional acts, not on ordinary updates. Across the 180 audit rows this campaign
+          wrote, none carried a before-image, including eight <code>Item closed</code> rows.</p>
+        <p>That is the wrong way round for a register: items are closed constantly and deleted
+          almost never, and <em>"who closed this risk, and what did it say before?"</em> is the
+          first question asked at review. The trail could say a risk was closed and by whom,
+          but not what it had been.</p>
+        <pre class="evidence"><span class="dim">after the fix</span>
+"before_json": {"status":<span class="fail">"Open"</span>,"probability":2,"impact":5,
+                "response":"Monitor","title":"…","detail":"…"}
+"after_json":  {"status":<span class="pass">"Closed"</span>}</pre>
+        <p>Both fixes were checked against Meridian's own bar: <strong>449 tests, nine gates
+          and the build all still pass.</strong></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="row">
+    <div class="rail">§5 Verdict</div>
+    <div>
+      <div class="verdict">
+        <h2>Not a better Jira</h2>
+        <p class="lede">Meridian is a governance instrument, and a genuinely good one.</p>
+        <p>If what you need is <em>"prove to an auditor in March why this decision was taken,
+          who approved the evidence, and that nobody rewrote the record"</em>, it does things
+          no mainstream PM tool does — and it does them by refusing at the moment of the act,
+          rather than reporting afterwards that somebody should not have.</p>
+        <p>If what you need is <em>"where does my team put their tickets"</em>, it is the wrong
+          tool, and it says so itself.</p>
+        <p><strong>For this programme it was the right choice</strong>, and the gate that
+          refused to close PRJ-147 without evidence is the reason. It forced the charter, the
+          architecture note, the test evidence and the realisation report to exist for all five
+          workstreams — documents a self-directed engineering effort would have skipped, and
+          that are now the reason the release can be explained to somebody who was not there.</p>
+      </div>
+
+      <h3>What would make it adoptable far more widely</h3>
+      <ol class="roadmap">
+        <li><strong>A Jira / GitHub / Azure DevOps bridge.</strong> One connector that closes a
+          stage when its work item closes. The difference between a PMO tool people maintain and
+          one they abandon — and the only item here that changes the product's category.</li>
+        <li><strong>Before-images on every update route</strong>, not only deletions. Finish
+          what the supplied patch starts.</li>
+        <li><strong>Slack and Teams delivery</strong> for the weekly digest and gate approvals.</li>
+        <li><strong>English translations of the decision record.</strong> The reasoning is the
+          best thing about this project.</li>
+        <li><strong>A one-page "what breaks if you skip this" operations guide</strong> for the
+          three findings the project correctly leaves to the operator: a tested backup, a second
+          instance, a written security policy.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<div class="row">
+  <div class="rail"></div>
+  <footer>
+    Prepared by the delivery committee for the Watcher 1.1 release · 8 September 2026<br>
+    The portfolio described is live under programme <code>WCH</code> · Meridian IT-PMO 5.9.0, Apache-2.0
+  </footer>
+</div>
+
+</div>
