@@ -17,7 +17,8 @@ export class Scheduler {
    * @param {(id: string) => Promise<object>} deps.getCredential decrypted blob by id
    * @param {number} [deps.concurrency]
    */
-  constructor({ pg, log, connectors, getCredential, concurrency = 32, pollTimeoutMs = 30_000 }) {
+  constructor({ pg, log, connectors, getCredential, concurrency = 32,
+                pollTimeoutMs = 30_000, assigned = false }) {
     this.pg = pg;
     this.log = log;
     this.connectors = connectors;
@@ -29,9 +30,11 @@ export class Scheduler {
     this.jobs = new Map();     // assignment id → {timer, assignment}
     this.credCache = new Map();// credential id → decrypted blob (invalidated on reload)
     this.reloadTimer = null;
-    // Proxy mode: the assignment list arrives from the central API rather
-    // than from a database this host cannot reach.
-    this.assigned = false;
+    /* Proxy mode: the assignment list arrives from the central API rather
+       than from a database this host cannot reach. Set at construction so
+       that start() never attempts the reload — a remote site has no
+       configuration database to read one from. */
+    this.assigned = assigned;
   }
 
   /**

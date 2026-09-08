@@ -84,7 +84,7 @@ would this event do?" against the live rule set without storing anything or
 paging anyone.
 
 ### Verified
-278 tests, all passing (was 74). Notably: 34 syslog grammar and TCP framing
+280 tests, all passing (was 74). Notably: 34 syslog grammar and TCP framing
 cases, 40 flow-format cases against datagrams built byte by byte to spec, 12
 real-socket end-to-end tests through the event pipeline to the published
 state event, and 38 covering the proxy buffer, backoff and staleness

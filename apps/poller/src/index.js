@@ -67,19 +67,30 @@ async function getCredential(id) {
   return decryptCredential(rows[0].data_enc);
 }
 
+/* Proxy mode is decided before anything starts, because it changes where
+   this process is allowed to look. A poller at a remote site can reach the
+   central API and the devices in front of it — and nothing else. Reading
+   poll_assignments, sweeping LLDP or taking discovery jobs all mean touching
+   a database and a Redis that are not there, and each would fail at boot. */
+const PROXY_MODE = !!process.env.WATCHER_PROXY_URL;
+
 const scheduler = new Scheduler({
   pg: pgPool,
   log,
   connectors,
   getCredential,
   concurrency: Number(process.env.POLLER_CONCURRENCY ?? 32),
+  // Suppresses the database-driven assignment reload; the list arrives from
+  // the central API instead, through setDevices().
+  assigned: PROXY_MODE,
 });
 await scheduler.start();
-log.info('poller started');
+log.info({ mode: PROXY_MODE ? 'proxy' : 'central' }, 'poller started');
 
 // LLDP auto-topology: refresh the L2 link map from what the switches
-// themselves report — shortly after boot, then hourly.
-import('./lldp.js').then(({ discoverLldpTopology }) => {
+// themselves report — shortly after boot, then hourly. Central mode only:
+// the topology map is written straight to the configuration database.
+if (!PROXY_MODE) import('./lldp.js').then(({ discoverLldpTopology }) => {
   const walk = async (device) => {
     const cred = decryptCredential(device.data_enc);
     return connectors.get('snmp').walkLldp(device.address, cred);
@@ -95,7 +106,7 @@ import('./lldp.js').then(({ discoverLldpTopology }) => {
 // central API, outbound only. It owns the devices assigned to it centrally,
 // buffers observations when the link fails, and heartbeats so the far end
 // can raise when it goes silent. Local (non-proxy) mode is unchanged.
-if (process.env.WATCHER_PROXY_URL) {
+if (PROXY_MODE) {
   const { ProxyAgent } = await import('./proxy/agent.js');
   const agent = new ProxyAgent({
     url: process.env.WATCHER_PROXY_URL,
@@ -148,8 +159,9 @@ const receivers = await import('./receivers/index.js')
   .then(({ startReceivers }) => startReceivers({ pg: pgPool, tsdb: tsdbPool, redis, log }))
   .catch((err) => { log.error({ err }, 'event receivers failed to start'); return { stop: async () => {} }; });
 
-// Discovery job queue (BRPOP loop) — jobs are created by the API.
-import('./discovery-worker.js')
+// Discovery job queue (BRPOP loop) — jobs are created by the API. Central
+// mode only: the queue lives in a Redis a remote site does not reach.
+if (!PROXY_MODE) import('./discovery-worker.js')
   .then(({ startDiscoveryWorker }) =>
     startDiscoveryWorker({ pg: pgPool, redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379', log, connectors }))
   .catch((err) => log.warn({ err }, 'discovery worker not started'));

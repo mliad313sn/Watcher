@@ -398,3 +398,33 @@ test('a non-finite sample is still refused in proxy mode', async () => {
   assert.equal(forwarded.length, 0);
   await writer.close();
 });
+
+test('a proxy-mode scheduler starts with no database at all', async () => {
+  // The boot-order bug this guards: start() ran the database-driven reload
+  // before anything had marked the process as a proxy, so a remote poller —
+  // which has no configuration database in front of it — died on startup and
+  // never reached the code that would have fetched its assignments.
+  const { Scheduler } = await import('../src/scheduler.js');
+  const exploding = { query() { throw new Error('no database at a remote site'); } };
+  const s = new Scheduler({ pg: exploding, log: silentLog, connectors: new Map(),
+    getCredential: async () => ({}), assigned: true });
+
+  await s.start();                       // must not throw
+  assert.equal(s.jobs.size, 0, 'nothing runs until the API sends assignments');
+
+  s.setDevices([{ id: 'd1', name: 'sw1', address: '10.0.0.1', protocol: 'snmp', interval_s: 60 }]);
+  assert.equal(s.jobs.size, 1);
+  s.stop();
+});
+
+test('a central scheduler still reads its assignments from the database', async () => {
+  const { Scheduler } = await import('../src/scheduler.js');
+  let asked = 0;
+  const pg = { async query() { asked++; return { rows: [] }; } };
+  const s = new Scheduler({ pg, log: silentLog, connectors: new Map(),
+    getCredential: async () => ({}) });
+  await s.start();
+  assert.equal(asked, 1, 'the reload happened');
+  assert.equal(s.assigned, false);
+  s.stop();
+});
