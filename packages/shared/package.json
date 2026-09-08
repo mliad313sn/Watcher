@@ -9,6 +9,7 @@
     "./nagios-states": "./src/nagios-states.js",
     "./discovery-engine": "./src/discovery-engine.js",
     "./syslog": "./src/syslog.js",
-    "./events": "./src/events.js"
+    "./events": "./src/events.js",
+    "./flow": "./src/flow.js"
   }
 }

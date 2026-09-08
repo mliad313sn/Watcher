@@ -12,6 +12,7 @@ import { EventPipeline } from './pipeline.js';
 import { SyslogReceiver } from './syslog.js';
 import { TrapReceiver } from './traps.js';
 import { AutoClearSweeper } from './auto-clear.js';
+import { FlowReceiver } from './flow.js';
 
 /** Parse `name/level/authProto/authKey/privProto/privKey`, one user per entry. */
 export function parseV3Users(spec) {
@@ -25,9 +26,29 @@ export function parseV3Users(spec) {
 export async function startReceivers({ pg, tsdb, redis, log }) {
   const trapPort = Number(process.env.TRAP_PORT ?? 0);
   const syslogPort = Number(process.env.SYSLOG_PORT ?? 0);
-  if (!trapPort && !syslogPort) {
-    log.info('event receivers disabled (set TRAP_PORT and/or SYSLOG_PORT to enable)');
+  const flowPort = Number(process.env.FLOW_PORT ?? 0);
+  if (!trapPort && !syslogPort && !flowPort) {
+    log.info('event receivers disabled (set TRAP_PORT, SYSLOG_PORT and/or FLOW_PORT to enable)');
     return { stop: async () => {}, pipeline: null };
+  }
+
+  const started = [];
+
+  // Flow is its own path: records are folded at ingest and written as
+  // conversations, and nothing about them can raise an alert — so it needs
+  // neither the rule engine nor the sender allow-list.
+  if (flowPort) {
+    const flow = new FlowReceiver({
+      port: flowPort,
+      flushMs: Number(process.env.FLOW_FLUSH_MS ?? 60_000),
+      maxKeys: Number(process.env.FLOW_MAX_CONVERSATIONS ?? 20_000),
+    }, { pg, tsdb, log });
+    await flow.start();
+    started.push(flow);
+  }
+
+  if (!trapPort && !syslogPort) {
+    return { pipeline: null, stop: async () => { for (const r of started) await r.stop?.(); } };
   }
 
   const pipeline = new EventPipeline({
@@ -37,8 +58,6 @@ export async function startReceivers({ pg, tsdb, redis, log }) {
       windowMs: Number(process.env.EVENT_RATE_WINDOW_MS ?? 60_000),
     },
   });
-
-  const started = [];
 
   if (trapPort) {
     const traps = new TrapReceiver({

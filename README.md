@@ -22,6 +22,11 @@ correlation, maintenance windows, on-call and runbooks apply unchanged — see
 [docs/EVENTS.md](docs/EVENTS.md). That closes the gap polling cannot see:
 what happened *between* two polls.
 
+**Flow analytics** answers the next question — who is *filling* the link.
+NetFlow v5/v9, IPFIX and sFlow on one port, folded at ingest into
+conversations, with top talkers, per-application share and per-interface
+attribution ([docs/FLOW.md](docs/FLOW.md)).
+
 Also in the box: **dynamic thresholds** (deterministic median+MAD anomaly
 detection that explains every alert it raises), **LLDP auto-topology** (the L2
 map builds itself from what switches report), a **zero-dependency OS agent**
@@ -38,7 +43,7 @@ generic event API inbound, and Prometheus exposition outbound — see
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │
-│  dashboard · devices · alerts · events · topology · reports · settings    │
+│ dashboard · devices · alerts · events · traffic · topology · reports      │
 │           REST (fetch)  ▲                ▲  WebSocket (live events)        │
 └─────────────────────────┼────────────────┼────────────────────────────────┘
                           │                │
@@ -58,6 +63,7 @@ generic event API inbound, and Prometheus exposition outbound — see
 │              apps/poller — connector workers + event receivers             │
 │   SNMP v1/v2c/v3 · WinRM/WMI · Meraki REST · Asterisk AMI · discovery      │
 │   SNMP traps (162/udp) · syslog (514/udp+tcp) → rule engine → alerts       │
+│   NetFlow v5/v9 · IPFIX · sFlow (2055/udp) → folded conversations          │
 │         (metrics → TimescaleDB, live state → Redis pub/sub)                │
 └────────────────────────────────────────────────────────────────────────────┘
 ```

@@ -87,6 +87,18 @@ Events enter the **same** alert pipeline as Nagios checks, so correlation,
 maintenance windows, on-call and runbooks all apply unchanged. Full
 documentation: [docs/EVENTS.md](EVENTS.md).
 
+## Flow analytics
+
+| Surface | How |
+|---|---|
+| **NetFlow v5** | `FLOW_PORT=2055`; fixed layout, no templates. |
+| **NetFlow v9** | Templates cached per exporter and observation domain. |
+| **IPFIX** | RFC 7011, including 64-bit counters, variable-length and enterprise elements. |
+| **sFlow v5** | Flow samples decoded from the sampled frame and scaled by the agent's rate. |
+
+All four arrive on one UDP port and fold into conversations at ingest.
+Full documentation: [docs/FLOW.md](FLOW.md).
+
 ## Identity
 
 - **OIDC**: Keycloak, Authentik, Okta, Entra ID, Google — `SSO_OIDC_*` env,
