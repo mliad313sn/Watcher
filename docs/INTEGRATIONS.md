@@ -110,6 +110,18 @@ Full documentation: [docs/FLOW.md](FLOW.md).
 Device credentials stay at the site — an assignment names a credential, it
 never carries one. Full documentation: [docs/PROXIES.md](PROXIES.md).
 
+## Configuration management
+
+| Surface | How |
+|---|---|
+| **Config backup** | `CONFIG_BACKUP=1`; nightly capture over the system `ssh` with key auth. |
+| **Vendors** | Cisco IOS/IOS-XE and NX-OS, Juniper, Arista, HP/Aruba, MikroTik, FortiOS, generic. |
+| **Drift** | Alerts when a device stops matching an *approved* baseline — not merely last night's capture. |
+| **Diffs** | `GET /api/configs/:deviceId/diff` against the baseline or any two versions. |
+
+Secrets are redacted before storage. Full documentation:
+[docs/CONFIGS.md](CONFIGS.md).
+
 ## Identity
 
 - **OIDC**: Keycloak, Authentik, Okta, Entra ID, Google — `SSO_OIDC_*` env,

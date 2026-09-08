@@ -1,6 +1,6 @@
 {
   "name": "@watcher/shared",
-  "version": "1.0.0-rc.1",
+  "version": "1.1.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,7 @@
     "./syslog": "./src/syslog.js",
     "./events": "./src/events.js",
     "./flow": "./src/flow.js",
-    "./forward": "./src/forward.js"
+    "./forward": "./src/forward.js",
+    "./config-drift": "./src/config-drift.js"
   }
 }

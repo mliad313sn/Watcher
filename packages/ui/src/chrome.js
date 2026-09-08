@@ -18,6 +18,7 @@ const NAV = [
   { id: 'events', href: '/events.html', label: 'Events', icon: 'bolt' },
   { id: 'flow', href: '/flow.html', label: 'Traffic', icon: 'network_check' },
   { id: 'topology', href: '/topology.html', label: 'Topology', icon: 'hub' },
+  { id: 'configs', href: '/configs.html', label: 'Configs', icon: 'description' },
   { id: 'reports', href: '/reports.html', label: 'Reports', icon: 'monitoring' },
   { id: 'settings', href: '/settings.html', label: 'Admin', icon: 'admin_panel_settings' },
 ];

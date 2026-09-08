@@ -126,6 +126,22 @@ if (process.env.WATCHER_PROXY_URL) {
   process.on('exit', () => agent.stop());
 }
 
+// Configuration backup. Off unless CONFIG_BACKUP=1: reaching into every
+// device with privileged credentials is not something a monitoring product
+// should start doing on its own.
+if (process.env.CONFIG_BACKUP === '1') {
+  const { ConfigBackup } = await import('./config/backup.js');
+  const backup = new ConfigBackup({ pg: pgPool, redis, log }, {
+    // Secrets are redacted before storage; with a key set, the placeholder
+    // carries a keyed fingerprint so a ROTATION is still visible as a change
+    // without the value ever landing in the database.
+    fingerprintKey: process.env.CONFIG_FINGERPRINT_KEY ?? '',
+    concurrency: Number(process.env.CONFIG_CONCURRENCY ?? 4),
+    timeoutMs: Number(process.env.CONFIG_TIMEOUT_MS ?? 60_000),
+  });
+  backup.start(Number(process.env.CONFIG_INTERVAL_MS ?? 24 * 3_600_000));
+}
+
 // Event plane: SNMP traps and syslog. Off unless a port is configured —
 // see apps/poller/src/receivers/index.js for why that default is deliberate.
 const receivers = await import('./receivers/index.js')

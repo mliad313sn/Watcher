@@ -22,6 +22,14 @@ correlation, maintenance windows, on-call and runbooks apply unchanged — see
 [docs/EVENTS.md](docs/EVENTS.md). That closes the gap polling cannot see:
 what happened *between* two polls.
 
+**Configuration backup** captures every device nightly, keeps a version only
+when the *normalised* configuration changed — vendor noise like
+`ntp clock-period` and `! Last configuration change at …` is not a change —
+and alerts when a device stops matching an approved baseline. Secrets are
+redacted before storage, with an optional keyed fingerprint so a rotation is
+still visible without the value ever being stored
+([docs/CONFIGS.md](docs/CONFIGS.md)).
+
 **Distributed polling** puts a proxy *at* the site: it polls locally and
 pushes over one outbound HTTPS connection, so a site behind NAT or a firewall
 nobody will open is monitored without inbound access — and no device password
@@ -51,7 +59,7 @@ generic event API inbound, and Prometheus exposition outbound — see
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Browser (MPA)                                 │
-│ dashboard · devices · alerts · events · traffic · topology · reports      │
+│ dashboard · devices · alerts · events · traffic · topology · configs      │
 │           REST (fetch)  ▲                ▲  WebSocket (live events)        │
 └─────────────────────────┼────────────────┼────────────────────────────────┘
                           │                │
